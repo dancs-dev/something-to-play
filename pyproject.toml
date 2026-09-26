@@ -1,0 +1,10 @@
+[project]
+name = "game-recommender"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "django>=5.2,<5.3",
+    "httpx>=0.28.1",
+    "openai>=3.19.2",
+    "pydantic>=2.13.5",
+]

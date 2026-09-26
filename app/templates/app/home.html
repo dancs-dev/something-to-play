@@ -1,0 +1,7 @@
+{% extends 'app/base.html' %}{% block content %}
+<section class="hero"><p class="eyebrow">YOUR NEXT GOOD SESSION</p><h1>Less scrolling.<br>More playing.</h1><p class="lead">A game for the mood you’re in, the things you love, and the time you have tonight.</p></section>
+{% if user.is_authenticated %}<section class="panel"><div><p class="eyebrow">SET THE SCENE</p><h2>What does tonight look like?</h2><p>Your choices apply to this session. Your taste profile stays yours.</p></div>
+<form method="post" action="{% url 'recommend' %}">{% csrf_token %}<div class="form-grid">{{ form.as_p }}</div><button>Find my next game <span aria-hidden="true">→</span></button></form></section>
+<p class="muted">New here? <a href="{% url 'onboarding' %}">Tell us what you enjoy</a> to make the recommendations more personal.</p>
+{% else %}<div class="actions"><a class="button" href="{% url 'signup' %}">Find your next game →</a><a href="{% url 'login' %}">Already have an account?</a></div><div class="grid teasers"><article><span class="badge">01 · YOUR TASTE</span><h2>Start with what you love.</h2><p>The worlds, mechanics and little details that keep you coming back.</p></article><article><span class="badge">02 · YOUR EVENING</span><h2>Meet your energy.</h2><p>A quick break, a quiet puzzle, or a world to get lost in.</p></article><article><span class="badge">03 · YOUR CHOICE</span><h2>Know why it fits.</h2><p>Clear reasons, honest trade-offs, and feedback that helps next time.</p></article></div>{% endif %}
+{% endblock %}
