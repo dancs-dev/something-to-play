@@ -1,6 +1,6 @@
 # Next Play
 
-A Django + SQLite game recommendation MVP. Start with local accounts, manual taste and ownership, and 20 labelled demonstration games. Steam and OpenAI are optional.
+A Django + SQLite game recommendation MVP. Start with local accounts, manual taste and ownership, and 20 labelled demonstration games. Steam and AI are optional; AI can run on local Ollama or hosted OpenAI.
 
 ## Run locally
 
@@ -72,17 +72,35 @@ Official references: [Steam OpenID](https://partner.steamgames.com/doc/features/
 
 **Store metadata limitation:** grounding uses Steam's public `store.steampowered.com/api/appdetails` endpoint, which does not have the same supported contract as documented Web APIs. It may be blocked, region-dependent or change schema. Only independently returned matching identities and recognised metadata are accepted; failure leaves the candidate unverified and excluded. The fixed `cc=us` is for metadata retrieval, not a claim of regional availability or pricing. Steam Deck/Proton compatibility and current purchase prices are not inferred.
 
-## Optional OpenAI assistance
+## Optional AI: local Ollama or hosted OpenAI
+
+To use an existing local Ollama instance without an API key, add these values to `.env`:
+
+```dotenv
+OLLAMA_BASE_URL=http://localhost:11434/v1
+OLLAMA_MODEL=qwen3.5:latest
+```
+
+Use a model already installed on your server. Start both processes with this environment:
+
+```bash
+uv run --env-file .env python manage.py runserver
+uv run --env-file .env python manage.py run_pending --watch
+```
+
+An explicit `OLLAMA_BASE_URL` takes precedence over hosted OpenAI. The existing OpenAI SDK sends a dummy `ollama` key required by its constructor; the local server ignores it. A real hosted key is never forwarded to Ollama. Local calls use Chat Completions, a 90-second timeout, no retries and strict application-side validation. The local wire schema omits `maxLength`, which this server’s grammar backend rejects; the complete Pydantic schema still enforces all string limits after decoding. The local model proposes games from its knowledge; hosted web-search tools are not sent to Ollama. Independently fetched Steam metadata still verifies candidates. No model downloads or server configuration changes are performed by this app. See [Ollama OpenAI compatibility](https://docs.ollama.com/api/openai-compatibility).
+
+For hosted OpenAI, leave `OLLAMA_BASE_URL` unset.
 
 Set `OPENAI_API_KEY` and, optionally, `OPENAI_MODEL` (default `gpt-4.1-mini`). The configured model/account must support Responses structured outputs and the web-search tool. The provider interface in `app/llm.py` has preference extraction, candidate discovery and reranking methods; a different provider can implement the same validated schemas without changing scoring/views.
 
 - Extraction runs on submitted conversation text, with at most the two preceding turns. It saves the note first, uses a bounded request, and preserves a manual path on any provider/schema failure.
 - Recommendations return deterministic results immediately. With AI configured, the run queues optional enhancement for the single worker.
-- Discovery proposes up to ten Steam titles from model knowledge and can search Steam store pages (at most three tool calls). It sees relevant preferences/session data and up to 40 owned titles, never credentials, user IDs or Steam IDs. Owned-only discovery is restricted to those known owned titles.
+- Discovery proposes up to ten Steam titles from model knowledge. Hosted OpenAI can additionally search Steam store pages (at most three tool calls); the local adapter has no web-search tool. It sees relevant preferences/session data and up to 40 owned titles, never credentials, user IDs or Steam IDs. Owned-only discovery is restricted to those known owned titles.
 - A proposed title/app ID is a hypothesis. Server-side grounding fetches the fixed Steam endpoint, checks identity and platform/mode schema, and stores evidence. Model-supplied URLs are never fetched or treated as verification. Subjective attributes without supplied evidence remain unknown.
 - Reranking receives at most 20 eligible candidates, their evidence facts and up to two bounded review excerpts per game. Prompts are versioned; inputs/results are recorded on the run. User/review/search text is untrusted data, never instructions.
 - Reranking must return every supplied ID exactly once and only known evidence keys. The application renders rationale text from selected stored facts; the model cannot introduce factual prose or unknown game IDs. Constraints are checked again after the network call, and variety is restored.
-- The SDK has a 30-second timeout and no automatic retries; token/tool/candidate limits bound work. Missing keys, provider refusals, incomplete/malformed output and failures use deterministic fallback. No recursive agent loops or MCP are used. `store=False` is sent to OpenAI; normal provider retention policies still apply.
+- Hosted OpenAI has a 30-second timeout (local Ollama: 90 seconds) and no automatic retries; token/tool/candidate limits bound work. Missing keys, provider refusals, incomplete/malformed output and failures use deterministic fallback. No recursive agent loops or MCP are used. `store=False` is sent to OpenAI; normal provider retention policies still apply.
 
 [Responses web search](https://developers.openai.com/api/docs/guides/tools-web-search), [structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs), [default model capabilities](https://developers.openai.com/api/docs/models/gpt-4.1-mini).
 
@@ -130,4 +148,4 @@ The automated suite uses mocked external transports; it does not need keys or ne
 
 For production, set `DJANGO_DEBUG=0`, a unique random `DJANGO_SECRET_KEY`, `DJANGO_ALLOWED_HOSTS` and the HTTPS `SITE_ORIGIN`; configure HTTPS/static-file serving and run `uv run --env-file .env python manage.py check --deploy`. The development server is not a deployment setup. Password-reset email, public-registration abuse controls, backups/monitoring and a hosting configuration remain deployment work.
 
-Live Steam-account login/library import and paid OpenAI calls require your credentials and have not been smoke-tested in this workspace. The adapter paths are implemented and tested with recorded-shape fixtures/mocks, not claimed as live-account verification. No credentials are bundled. Complete personal review history, a store-wide crawler, console support, pricing, inferred Steam Deck support, Celery/Redis and vector search are intentionally deferred.
+Local Ollama (`qwen3.5:latest`) preference extraction and evidence-key reranking were smoke-tested successfully. Discovery also returned schema-valid but incorrect title/app-ID suggestions; these remain untrusted hypotheses and are subject to owned-library and Steam identity checks, not a claim of successful catalogue admission. Live Steam-account login/library import and paid OpenAI calls require your credentials and have not been smoke-tested in this workspace. The adapter paths are implemented and tested with recorded-shape fixtures/mocks, not claimed as live-account verification. No credentials are bundled. Complete personal review history, a store-wide crawler, console support, pricing, inferred Steam Deck support, Celery/Redis and vector search are intentionally deferred.

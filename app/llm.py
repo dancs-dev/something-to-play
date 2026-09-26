@@ -81,9 +81,15 @@ class RecommendationProvider(Protocol):
 
 class OpenAIProvider:
     def __init__(self, client=None):
-        if not client and not settings.OPENAI_API_KEY:
+        self.ollama = bool(settings.OLLAMA_BASE_URL)
+        self.model = settings.OLLAMA_MODEL if self.ollama else settings.OPENAI_MODEL
+        if not client and not (self.ollama or settings.OPENAI_API_KEY):
             raise ProviderError('AI is not configured.')
-        self.client = client or OpenAI(api_key=settings.OPENAI_API_KEY, timeout=httpx.Timeout(30, connect=5), max_retries=0)
+        self.client = client or OpenAI(
+            # Ollama ignores the SDK-required placeholder. Never forward a hosted credential locally.
+            api_key='ollama' if self.ollama else settings.OPENAI_API_KEY,
+            base_url=settings.OLLAMA_BASE_URL if self.ollama else 'https://api.openai.com/v1',
+            timeout=httpx.Timeout(90 if self.ollama else 30, connect=5), max_retries=0)
         self.sources = []
 
     def _call(self, version, evidence, schema, search=False):
@@ -92,8 +98,27 @@ class OpenAIProvider:
             kwargs = {'tools': [{'type': 'web_search', 'filters': {'allowed_domains': ['store.steampowered.com']}}],
                       'max_tool_calls': 3, 'include': ['web_search_call.action.sources']}
         try:
+            if self.ollama:
+                instructions = PROMPTS[version]
+                if search:
+                    instructions += ' No web-search tool is available. Use your knowledge and omit uncertain identities.'
+                # Some local grammar backends reject maxLength; enforce it after decoding instead.
+                wire_schema = json.loads(json.dumps(schema.model_json_schema()),
+                    object_hook=lambda fields: {key: value for key, value in fields.items() if key != 'maxLength'})
+                response = self.client.chat.completions.create(
+                    model=self.model, messages=[{'role': 'system', 'content': instructions},
+                        {'role': 'user', 'content': json.dumps(evidence, ensure_ascii=False)}],
+                    response_format={'type': 'json_schema', 'json_schema': {
+                        'name': schema.__name__, 'strict': True, 'schema': wire_schema}},
+                    temperature=0, reasoning_effort='none', max_tokens=4000)
+                if not response.choices or response.choices[0].finish_reason != 'stop':
+                    raise ProviderError('Local AI response was incomplete.')
+                message = response.choices[0].message
+                if message.refusal or not message.content:
+                    raise ProviderError('Local AI response was refused or invalid.')
+                return schema.model_validate_json(message.content)
             response = self.client.responses.parse(
-                model=settings.OPENAI_MODEL, instructions=PROMPTS[version],
+                model=self.model, instructions=PROMPTS[version],
                 input=json.dumps(evidence, ensure_ascii=False), text_format=schema,
                 max_output_tokens=4000, store=False, **kwargs)
             if response.status != 'completed' or response.output_parsed is None:
@@ -193,7 +218,9 @@ def validate_reranking(value, shortlist):
 
 def enhance_run(run, provider=None, steam_client=None):
     diagnostics = dict(run.diagnostics)
-    diagnostics.update({'prompt_versions': [DISCOVERY_VERSION, RERANK_VERSION], 'model': settings.OPENAI_MODEL})
+    diagnostics.update({'prompt_versions': [DISCOVERY_VERSION, RERANK_VERSION],
+                        'provider': 'ollama' if settings.OLLAMA_BASE_URL else 'openai',
+                        'model': settings.OLLAMA_MODEL if settings.OLLAMA_BASE_URL else settings.OPENAI_MODEL})
     try:
         provider = provider or OpenAIProvider()
         owned = list(OwnershipActivity.objects.filter(user=run.user).select_related('game'))
