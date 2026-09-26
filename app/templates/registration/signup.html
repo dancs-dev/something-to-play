@@ -1,1 +1,8 @@
-{% extends 'app/base.html' %}{% block content %}<section class="panel narrow"><p class="eyebrow">MAKE IT PERSONAL</p><h1>Create your account</h1><p>Steam is optional. Start with a few games you love.</p><form method="post">{% csrf_token %}{{ form.as_p }}<button>Create account</button></form></section>{% endblock %}
+{% extends 'app/base.html' %}
+{% block content %}
+<section class="panel narrow">
+  <h1>Create your account</h1>
+  <p>Keep your own list of games and recommendations.</p>
+  <form method="post">{% csrf_token %}{{ form.as_p }}<button>Create account</button></form>
+</section>
+{% endblock %}

@@ -1,7 +1,53 @@
-{% extends 'app/base.html' %}{% block content %}
-<section class="hero"><p class="eyebrow">YOUR NEXT GOOD SESSION</p><h1>Less scrolling.<br>More playing.</h1><p class="lead">A game for the mood you’re in, the things you love, and the time you have tonight.</p></section>
-{% if user.is_authenticated %}<section class="panel"><div><p class="eyebrow">SET THE SCENE</p><h2>What does tonight look like?</h2><p>Your choices apply to this session. Your taste profile stays yours.</p></div>
-<form method="post" action="{% url 'recommend' %}">{% csrf_token %}<div class="form-grid">{{ form.as_p }}</div><button>Find my next game <span aria-hidden="true">→</span></button></form></section>
-<p class="muted">New here? <a href="{% url 'onboarding' %}">Tell us what you enjoy</a> to make the recommendations more personal.</p>
-{% else %}<div class="actions"><a class="button" href="{% url 'signup' %}">Find your next game →</a><a href="{% url 'login' %}">Already have an account?</a></div><div class="grid teasers"><article><span class="badge">01 · YOUR TASTE</span><h2>Start with what you love.</h2><p>The worlds, mechanics and little details that keep you coming back.</p></article><article><span class="badge">02 · YOUR EVENING</span><h2>Meet your energy.</h2><p>A quick break, a quiet puzzle, or a world to get lost in.</p></article><article><span class="badge">03 · YOUR CHOICE</span><h2>Know why it fits.</h2><p>Clear reasons, honest trade-offs, and feedback that helps next time.</p></article></div>{% endif %}
+{% extends 'app/base.html' %}
+{% block content %}
+{% if user.is_authenticated %}
+  <p class="eyebrow">YOUR NEXT GAME</p>
+  <h1>Start with what you like.</h1>
+  <p class="lead">Keep a list of games you like or dislike, and why. AI uses that list to suggest what to play next.</p>
+  <div class="grid two">
+    <section class="panel">
+      <h2>Your taste</h2>
+      {% for pref in preferences %}
+        <article class="preference">
+          <span class="badge">{{ pref.get_sentiment_display }}</span>
+          <h3>{{ pref.subject }}</h3>
+          <p>{{ pref.reason|default:'No reason added yet.' }}</p>
+          <div class="actions">
+            <a href="{% url 'preference_edit' pref.pk %}">Edit</a>
+            <form method="post" action="{% url 'preference_delete' pref.pk %}">{% csrf_token %}<button class="quiet">Remove</button></form>
+          </div>
+        </article>
+      {% empty %}
+        <p>Add a game you love—or one that didn’t work for you. The reason is what makes your recommendations personal.</p>
+      {% endfor %}
+    </section>
+    <section class="panel">
+      <h2>Add a game</h2>
+      <form method="post" action="{% url 'preference_new' %}">
+        {% csrf_token %}
+        {{ preference_form.as_p }}
+        <button>Save game</button>
+      </form>
+    </section>
+  </div>
+  <section class="panel">
+    <h2>What should you play next?</h2>
+    <form method="post" action="{% url 'recommend' %}"
+          hx-post="{% url 'recommend' %}" hx-target="#results" hx-swap="outerHTML"
+          hx-indicator="#thinking" hx-disabled-elt="find button" hx-request='{"timeout":100000}'>
+      {% csrf_token %}
+      {{ recommendation_form.as_p }}
+      <button>Ask Ollama for recommendations</button>
+      <span id="thinking" class="htmx-indicator" role="status">Asking Ollama… this may take a minute.</span>
+    </form>
+  </section>
+  {% include 'app/results.html' %}
+{% else %}
+  <section class="hero">
+    <p class="eyebrow">YOUR NEXT GOOD GAME</p>
+    <h1>Tell us what you love.<br>Find your next game.</h1>
+    <p class="lead">Save the games you like and dislike, explain why, and ask AI for a few personal recommendations.</p>
+    <a class="button" href="{% url 'signup' %}">Get started →</a>
+  </section>
+{% endif %}
 {% endblock %}

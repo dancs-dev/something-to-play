@@ -1,61 +1,53 @@
-"""Optional real-browser smoke: uv run --with playwright python manage.py test app.tests.test_browser."""
+"""Optional: uv run --with playwright python manage.py test app.tests.test_browser."""
 from importlib.util import find_spec
-from io import StringIO
-from concurrent.futures import ThreadPoolExecutor
 from unittest import skipUnless
+from unittest.mock import patch
 
 from django.contrib.staticfiles.testing import StaticLiveServerTestCase
-from django.core.management import call_command
 from django.test import override_settings
 
-from app.models import RecommendationRun
+from app.tests.test_app import GAMES
 
 
-@skipUnless(find_spec('playwright'), 'Optional: run with uv run --with playwright after installing Chromium')
-@override_settings(AI_ENABLED=False, ALLOWED_HOSTS=['localhost', 'testserver'])
+@skipUnless(find_spec('playwright'), 'Optional browser check: run with uv run --with playwright')
+@override_settings(ALLOWED_HOSTS=['localhost', 'testserver'])
 class BrowserSmoke(StaticLiveServerTestCase):
-    def test_manual_flow_mobile_and_htmx(self):
+    def test_taste_to_direct_ai_request_and_feedback(self):
         from playwright.sync_api import sync_playwright
-        call_command('seed_demo', stdout=StringIO())
-        with sync_playwright() as playwright:
+        with sync_playwright() as playwright, patch('app.recommendations.ask_ollama', return_value=GAMES) as ask:
             browser = playwright.chromium.launch()
             page = browser.new_page(viewport={'width': 1280, 'height': 900})
             errors = []
             page.on('pageerror', lambda error: errors.append(str(error)))
             page.goto(self.live_server_url)
-            page.get_by_role('link', name='Get started', exact=True).click()
+            page.get_by_role('link', name='Get started', exact=True).first.click()
             page.get_by_label('Username').fill('browser-player')
             page.get_by_label('Password:', exact=True).fill('browser-smoke-password-82')
             page.get_by_label('Password confirmation').fill('browser-smoke-password-82')
             page.get_by_role('button', name='Create account').click()
-            page.get_by_label('Game, mechanic or theme').fill('Portal 2')
-            page.get_by_label('What worked for you, or got in the way?').fill('Puzzles and exploration')
-            page.get_by_role('button', name='Save answer').click()
-            page.get_by_role('link', name='Taste profile', exact=True).click()
-            page.get_by_label('Game:', exact=True).select_option(label='Portal 2')
-            page.get_by_label('Owned:', exact=True).select_option('yes')
-            page.get_by_role('button', name='Update ownership').click()
-            page.get_by_role('link', name='◈ Next Play').click()
-            page.get_by_label('Minutes available').fill('45')
-            page.get_by_label('Choose from').select_option('owned')
-            page.get_by_label('How are you playing?').select_option('solo')
-            page.get_by_role('button', name='Find my next game').click()
-            page.locator('.card').wait_for()
-            self.assertEqual(page.locator('.card h2').all_text_contents(), ['Portal 2'])
-            self.assertEqual(page.evaluate('typeof htmx'), 'object')
-            self.assertTrue(page.get_by_text('Demonstration data · curated estimates').is_visible())
-            # Exercise the actual polling swap, not only an HTMX-marked Django request.
-            # Playwright's sync API runs an event loop; keep Django ORM calls on a separate thread.
-            with ThreadPoolExecutor(max_workers=1) as db:
-                db.submit(lambda: RecommendationRun.objects.update(status='pending')).result()
-                page.reload()
-                db.submit(lambda: RecommendationRun.objects.update(status='fallback')).result()
-            page.get_by_text('AI could not improve this run.', exact=False).wait_for(timeout=10000)
-            page.screenshot(path='/tmp/game-recommender-desktop.png', full_page=True)
+            page.get_by_label('Game:', exact=True).fill('Portal 2')
+            page.get_by_label('How did you feel about it?', exact=False).select_option('1')
+            page.get_by_label('Why?', exact=True).fill('Clever puzzles')
+            page.get_by_role('button', name='Save game').click()
+            page.locator('.preference h3').wait_for()
+            page.get_by_label('Anything you want this time?', exact=False).fill('Something relaxing')
+            with page.expect_response(lambda response: response.url.endswith('/recommend/')) as submitted:
+                page.get_by_role('button', name='Ask Ollama for recommendations').click()
+            self.assertEqual(submitted.value.status, 200, submitted.value.text()[:1000])
+            self.assertIn('The Talos Principle', submitted.value.text())
+            self.assertEqual(errors, [])
+            page.locator('.card h3').wait_for(timeout=5000)
+            self.assertEqual(page.locator('.card h3').all_text_contents(), ['The Talos Principle'])
+            ask.assert_called_once_with([{'game': 'Portal 2', 'feeling': 'like', 'reason': 'Clever puzzles'}], 'Something relaxing')
+            self.assertEqual(page.url.rstrip('/'), self.live_server_url)  # HTMX updated the page directly.
+            page.screenshot(path='/tmp/game-recommender-simple-desktop.png', full_page=True)
             page.set_viewport_size({'width': 390, 'height': 844})
             self.assertTrue(page.evaluate('document.documentElement.scrollWidth <= window.innerWidth'))
-            page.screenshot(path='/tmp/game-recommender-mobile.png', full_page=True)
-            page.get_by_role('button', name='Not tonight', exact=True).click()
-            page.get_by_text('No eligible picks right now.').wait_for()
+            page.screenshot(path='/tmp/game-recommender-simple-mobile.png', full_page=True)
+            page.get_by_role('link', name='Disliked it', exact=True).click()
+            self.assertEqual(page.get_by_label('Game:', exact=True).input_value(), 'The Talos Principle')
+            page.get_by_label('Why?', exact=True).fill('Too slow for me')
+            page.get_by_role('button', name='Save game').click()
+            page.get_by_text('Too slow for me').wait_for()
             self.assertEqual(errors, [])
             browser.close()

@@ -1,9 +1,28 @@
 {% load static %}<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{% block title %}Next Play · Find your next game{% endblock %}</title>
-<link rel="stylesheet" href="{% static 'app/style.css' %}"><script src="{% static 'app/htmx.min.js' %}" defer></script></head>
-<body><a class="skip" href="#main">Skip to content</a><header><a class="brand" href="{% url 'home' %}">◈ Next Play</a><nav aria-label="Main navigation">
-{% if user.is_authenticated %}<a href="{% url 'profile' %}">Taste profile</a><a href="{% url 'history' %}">History</a><form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="quiet">Log out</button></form>
-{% else %}<a href="{% url 'login' %}">Log in</a><a href="{% url 'signup' %}">Get started</a>{% endif %}</nav></header>
-<main id="main">{% for message in messages %}<p class="notice" role="status">{{ message }}</p>{% endfor %}{% block content %}{% endblock %}</main>
-<footer>Built around your taste, and the time you have. <span>Demonstration estimates are labelled. No account connection required.</span></footer></body></html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Next Play · Find your next game{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'app/style.css' %}">
+  <script src="{% static 'app/htmx.min.js' %}" defer></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header>
+    <a class="brand" href="{% url 'home' %}">◈ Next Play</a>
+    <nav aria-label="Main navigation">
+      {% if user.is_authenticated %}
+        <a href="{% url 'home' %}">Your taste</a>
+        <a href="{% url 'history' %}">Past picks</a>
+        <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="quiet">Log out</button></form>
+      {% else %}
+        <a href="{% url 'login' %}">Log in</a>
+        <a href="{% url 'signup' %}">Get started</a>
+      {% endif %}
+    </nav>
+  </header>
+  <main id="main">{% block content %}{% endblock %}</main>
+  <footer>Your games. Your reasons. A few ideas for what to play next.</footer>
+</body>
+</html>

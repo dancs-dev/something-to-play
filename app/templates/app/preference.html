@@ -1,1 +1,12 @@
-{% extends 'app/base.html' %}{% block content %}<section class="panel narrow"><h1>{% if preference %}Edit{% else %}Add{% endif %} a preference</h1><form method="post">{% csrf_token %}{{ form.as_p }}{% include 'app/game_titles.html' %}<button>Save preference</button></form></section>{% endblock %}
+{% extends 'app/base.html' %}
+{% block content %}
+<section class="panel narrow">
+  <h1>{% if preference %}Edit{% else %}Add{% endif %} a game</h1>
+  <form method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button>Save game</button>
+    <a href="{% url 'home' %}">Cancel</a>
+  </form>
+</section>
+{% endblock %}

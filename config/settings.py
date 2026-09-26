@@ -123,13 +123,6 @@ if not DEBUG and SECRET_KEY == 'local-development-only-change-in-production':
 ALLOWED_HOSTS = os.getenv('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1,[::1]').split(',')
 INSTALLED_APPS += ['app']
 DATABASES['default']['OPTIONS'] = {'timeout': 5}
-if os.getenv('DB_ENGINE') == 'postgresql':
-    DATABASES['default'] = {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.environ['DB_NAME'], 'USER': os.environ['DB_USER'],
-        'PASSWORD': os.environ['DB_PASSWORD'], 'HOST': os.getenv('DB_HOST', 'localhost'),
-        'PORT': os.getenv('DB_PORT', '5432'),
-    }
 LOGIN_URL = 'login'
 LOGIN_REDIRECT_URL = 'home'
 LOGOUT_REDIRECT_URL = 'home'
@@ -142,15 +135,7 @@ SECURE_SSL_REDIRECT = not DEBUG
 SECURE_HSTS_SECONDS = 31536000 if not DEBUG else 0
 SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG
 SECURE_HSTS_PRELOAD = not DEBUG
-STEAM_API_KEY = os.getenv('STEAM_API_KEY', '')
-SITE_ORIGIN = os.getenv('SITE_ORIGIN', 'http://localhost:8000').rstrip('/')
-OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
-OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-4.1-mini')
-OLLAMA_BASE_URL = os.getenv('OLLAMA_BASE_URL', '').strip()
+# Local Ollama works with a plain `uv run python manage.py runserver`.
+OLLAMA_BASE_URL = os.getenv('OLLAMA_BASE_URL', 'http://localhost:11434/v1').strip()
 OLLAMA_MODEL = os.getenv('OLLAMA_MODEL', 'qwen3.5:latest')
-AI_ENABLED = bool(OLLAMA_BASE_URL or OPENAI_API_KEY)
-SCORE_WEIGHTS = {'taste': 0.50, 'session': 0.35, 'engagement': 0.05, 'feedback': 0.10}
-PRIVATE_CACHE_DIR = BASE_DIR / '.cache'
-CACHES = {'default': {'BACKEND': 'django.core.cache.backends.filebased.FileBasedCache',
-                      'LOCATION': PRIVATE_CACHE_DIR / 'responses'}}
 DATA_UPLOAD_MAX_MEMORY_SIZE = 128 * 1024
