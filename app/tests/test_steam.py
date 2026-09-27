@@ -151,7 +151,7 @@ class SteamTests(TestCase):
         self.assertEqual([entry.game.title for entry in response.context['unrated']], ['Unrated'])
         self.assertEqual(
             [(label, [pref.game.title for pref in games]) for label, games in response.context['rated_sections']],
-            [('Liked', ['Manual favorite']), ('Disliked', ['Manual dislike'])],
+            [('Loved', []), ('Liked', ['Manual favorite']), ('Disliked', ['Manual dislike'])],
         )
         self.assertEqual([pref.game.title for pref in response.context['ignored']], ['Ignored'])
         self.assertNotContains(self.client.get(reverse('home')), 'Import your Steam library')
@@ -162,6 +162,39 @@ class SteamTests(TestCase):
         self.assertContains(form, 'Why?')
         self.client.post(response['Location'], {'subject': 'Unrated', 'game_id': unrated.pk, 'sentiment': -1, 'reason': 'Too slow'})
         self.assertTrue(Preference.objects.filter(user=self.user, game=unrated, sentiment=-1, reason='Too slow').exists())
+
+    def test_not_played_can_be_rated_loved_or_removed(self):
+        game = Game.objects.create(title='Future favorite')
+        Ownership.objects.create(account=self.account, game=game)
+        self.client.post(reverse('library_curate', args=[game.pk]), {'sentiment': -2})
+        preference = Preference.objects.get(user=self.user, game=game)
+        self.assertEqual(preference.sentiment, -2)
+        self.assertEqual([p.game.title for p in self.client.get(reverse('library')).context['not_played']], ['Future favorite'])
+        url = reverse('preference_edit', args=[preference.pk]) + '?feeling=loved&next=library'
+        self.assertEqual(self.client.get(url).context['form'].initial['sentiment'], 2)
+        self.client.post(url, {'subject': game.title, 'game_id': game.pk, 'sentiment': 2, 'reason': 'Exceptional'})
+        preference.refresh_from_db()
+        self.assertEqual((preference.sentiment, preference.reason), (2, 'Exceptional'))
+        self.assertEqual([p.game.title for p in self.client.get(reverse('library')).context['rated_sections'][0][1]], ['Future favorite'])
+        self.client.post(reverse('preference_delete', args=[preference.pk]) + '?next=library')
+        self.assertFalse(Preference.objects.filter(pk=preference.pk).exists())
+
+    def test_feedback_search_prefers_existing_steam_game(self):
+        Game.objects.create(title='Portal 2')  # Older title-only record.
+        steam_game = Game.objects.create(title='Portal 2')
+        GameIdentity.objects.create(game=steam_game, provider='steam', external_id='620')
+        search = self.client.get(reverse('game_search'), {'query': 'Portal 2', 'feeling': 'dislike'})
+        self.assertEqual(search.context['results'][0].pk, steam_game.pk)
+        self.assertEqual([game.title for game in search.context['results']], ['Portal 2'])
+        self.assertNotContains(search, 'as a title only game')
+        search = self.client.post(reverse('game_search'), {'query': 'Portal 2', 'feeling': 'dislike'})
+        self.assertEqual(search.context['feeling'], 'dislike')
+        url = reverse('preference_new') + f'?game={steam_game.pk}&feeling=dislike'
+        form = self.client.get(url).context['form']
+        self.assertEqual((form.initial['game_id'], form.initial['sentiment']), (steam_game.pk, -1))
+        self.client.post(url, {'subject': 'Portal 2', 'game_id': steam_game.pk, 'sentiment': -1, 'reason': 'Too fast'})
+        self.assertTrue(Preference.objects.filter(user=self.user, game=steam_game, reason='Too fast').exists())
+        self.assertEqual(Game.objects.filter(title='Portal 2').count(), 2)
 
     def test_private_response_cannot_remove_owned_games(self):
         game = Game.objects.create(title='Safe game')

@@ -16,13 +16,18 @@ from .recommendations import RecommendationError, create_run
 from .steam import SteamError, resolve_profile
 
 
+def game_by_title(title):
+    matches = Game.objects.filter(title__iexact=title)
+    return matches.filter(identities__provider='steam').first() or matches.first()
+
+
 def find_game(title, game_id=None):
     title = title.strip()
     if game_id:
         selected = get_object_or_404(Game, pk=game_id)
         if selected.title == title:
             return selected
-    game = Game.objects.filter(title__iexact=title).first()
+    game = game_by_title(title)
     if game:
         return game
     return Game.objects.create(title=title)
@@ -35,7 +40,7 @@ class HomeView(TemplateView):
         context = super().get_context_data(**kwargs)
         if self.request.user.is_authenticated:
             context.update(
-                preferences=Preference.objects.filter(user=self.request.user).exclude(sentiment=0).select_related('game')[:5],
+                has_taste=Preference.objects.filter(user=self.request.user, sentiment__in=[-1, 1, 2]).exists(),
                 steam_connected=LinkedAccount.objects.filter(user=self.request.user, provider='steam').exists(),
                 recommendation_form=RecommendationForm(),
                 run=RecommendationRun.objects.filter(user=self.request.user).order_by('-created_at').first(),
@@ -90,8 +95,8 @@ class PreferenceFormMixin(LoginRequiredMixin):
             initial |= {'subject': game.title, 'game_id': game.pk}
         elif self.request.GET.get('title'):
             initial['subject'] = self.request.GET['title'][:200]
-        if self.request.GET.get('feeling') in {'like', 'dislike'}:
-            initial['sentiment'] = 1 if self.request.GET['feeling'] == 'like' else -1
+        if self.request.GET.get('feeling') in {'loved', 'like', 'dislike'}:
+            initial['sentiment'] = {'loved': 2, 'like': 1, 'dislike': -1}[self.request.GET['feeling']]
         return initial
 
     def get_context_data(self, **kwargs):
@@ -149,7 +154,7 @@ class RecommendationView(LoginRequiredMixin, FormView):
         if self.request.headers.get('HX-Request') == 'true':
             return render(self.request, 'app/results.html', result)
         context = {
-            'preferences': Preference.objects.filter(user=self.request.user).exclude(sentiment=0).select_related('game')[:5],
+            'has_taste': Preference.objects.filter(user=self.request.user, sentiment__in=[-1, 1, 2]).exists(),
             'steam_connected': LinkedAccount.objects.filter(user=self.request.user, provider='steam').exists(),
             'recommendation_form': form or RecommendationForm(),
             'run': RecommendationRun.objects.filter(user=self.request.user).order_by('-created_at').first(),
@@ -198,17 +203,18 @@ class GameSearchView(LoginRequiredMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        query = self.request.POST.get('query', '').strip()[:200]
+        params = self.request.POST if self.request.method == 'POST' else self.request.GET
+        query = params.get('query', '').strip()[:200]
         context['form'] = GameSearchForm(initial={'query': query})
         context['query'] = query
-        context['feeling'] = self.request.POST.get('feeling', 'like')
+        context['feeling'] = params.get('feeling', 'like')
         context['results'] = []
         if query:
-            exact = Game.objects.filter(title__iexact=query).first()
+            exact = game_by_title(query)
             context['exact_match'] = bool(exact)
             matches = Game.objects.filter(title__icontains=query)
             if exact:
-                context['results'] = [exact, *matches.exclude(pk=exact.pk).order_by('title')[:19]]
+                context['results'] = [exact, *matches.exclude(title__iexact=query).order_by('title')[:19]]
             else:
                 context['results'] = list(matches.order_by('title')[:20])
         return context
@@ -248,10 +254,12 @@ class LibraryView(LoginRequiredMixin, TemplateView):
         context['recently_synced'] = bool(account and account.last_synced_at and account.last_synced_at > timezone.now() - timedelta(days=1))
         preferences = list(Preference.objects.filter(user=self.request.user).select_related('game'))
         context['rated_sections'] = [
+            ('Loved', [pref for pref in preferences if pref.sentiment == 2]),
             ('Liked', [pref for pref in preferences if pref.sentiment == 1]),
             ('Disliked', [pref for pref in preferences if pref.sentiment == -1]),
         ]
         context['ignored'] = [pref for pref in preferences if pref.sentiment == 0]
+        context['not_played'] = [pref for pref in preferences if pref.sentiment == -2]
         if account:
             rated_ids = {pref.game_id for pref in preferences}
             context['unrated'] = [entry for entry in Ownership.objects.filter(account=account, is_active=True).select_related('game').order_by('game__title') if entry.game_id not in rated_ids]
@@ -302,12 +310,12 @@ class LibraryCurationView(LoginRequiredMixin, View):
             sentiment = int(request.POST.get('sentiment', ''))
         except ValueError:
             sentiment = None
-        if sentiment not in {-1, 0, 1}:
-            messages.error(request, 'Choose Like, Dislike, or Ignore.')
+        if sentiment not in {-2, -1, 0, 1, 2}:
+            messages.error(request, 'Choose a game status.')
             return redirect('library')
-        if sentiment != 0:
+        if sentiment in {-1, 1, 2}:
             preference = Preference.objects.filter(user=request.user, game_id=game_id).first()
-            feeling = 'like' if sentiment == 1 else 'dislike'
+            feeling = {2: 'loved', 1: 'like', -1: 'dislike'}[sentiment]
             if preference:
                 return redirect(f"{reverse_lazy('preference_edit', kwargs={'pk': preference.pk})}?feeling={feeling}&next=library")
             return redirect(f"{reverse_lazy('preference_new')}?game={game_id}&feeling={feeling}&next=library")

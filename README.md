@@ -1,6 +1,6 @@
 # Next Play
 
-Save games you like or dislike, explain why, and get personal recommendations from an OpenAI-compatible AI provider.
+Rate games Loved, Like, or Dislike, explain why, and get personal recommendations from an OpenAI-compatible AI provider.
 
 ## Run
 
@@ -26,9 +26,9 @@ The ordinary command works without `.env`. Set `STEAM_WEB_API_KEY` in the server
 
 ## How it works
 
-Games have local titles and optional provider identities, such as a Steam app ID. Linked profiles and ownership are stored separately from each user's Like, Dislike, or Ignore choice and note. A sync runs only when the user presses **Sync library**; it adds new games, marks games missing from the latest visible library as inactive, and records the sync time. It never changes a user's choice or note. Manual game search checks local games first, then loads Steam's game catalogue on the first miss; later catalogue refreshes require an explicit button press and request only apps changed since the previous successful refresh. Games outside Steam can be saved by title.
+Games have local titles and optional provider identities, such as a Steam app ID. Linked profiles and ownership are stored separately from each user's Loved, Like, Dislike, Ignore, or Not played yet choice and note. A sync runs only when the user presses **Sync library**; it adds new games, marks games missing from the latest visible library as inactive, and records the sync time. It never changes a user's choice or note. Manual game search checks local games. Catalogue refresh is an explicit action in Settings and requests only apps changed since the previous successful refresh. Games outside Steam can be saved by title.
 
-The app sends that user's Like and Dislike list and an optional current request to the configured provider. Ownership and Ignore are excluded. The model returns game titles, personal rationales and potential drawbacks. JSON responses are validated; duplicate and already-listed games are removed. The app saves successful responses so users can revisit them. “Liked it” / “Disliked it” opens an editable taste entry so the user can add their reason.
+The app sends that user's Loved, Like, and Dislike ratings, owned replay candidates, explicitly unplayed owned games, and an optional current request to the configured provider. Loved is the strongest positive signal; Ignore and Not played yet are not taste ratings. The model suggests favorites to revisit, owned unplayed games, and new games. The app checks owned categories against the synced library, validates JSON, and removes duplicate or ineligible picks. Saved picks can be revisited; feedback searches for an existing game before opening its rating form.
 
 The configured model uses its knowledge. These are AI suggestions, not verified catalogue facts. A model/network error is displayed honestly with a retry path rather than replaced by unrelated picks. The request has a 90-second timeout. With a hosted provider, the user's taste and request are sent to that provider. Steam profile IDs and owned games are stored locally; Steam receives the profile ID only during a user-requested link or sync.
 

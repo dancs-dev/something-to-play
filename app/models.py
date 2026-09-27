@@ -45,7 +45,7 @@ class CatalogueState(models.Model):
 class Preference(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     game = models.ForeignKey(Game, on_delete=models.CASCADE)
-    sentiment = models.SmallIntegerField(choices=[(1, 'Like'), (-1, 'Dislike'), (0, 'Ignore')])
+    sentiment = models.SmallIntegerField(choices=[(2, 'Loved'), (1, 'Like'), (-1, 'Dislike'), (0, 'Ignore'), (-2, 'Not played yet')])
     reason = models.TextField('why', blank=True, max_length=2000)
     updated_at = models.DateTimeField(auto_now=True)
 

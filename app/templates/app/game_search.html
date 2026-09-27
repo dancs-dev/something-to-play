@@ -4,6 +4,7 @@
   <h1>Find a game</h1>
   <form method="post">
     {% csrf_token %}
+    <input type="hidden" name="feeling" value="{{ feeling }}">
     {{ form.as_p }}
     <button>Search games</button>
   </form>

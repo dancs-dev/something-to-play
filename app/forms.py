@@ -14,7 +14,7 @@ class PreferenceForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields['sentiment'].choices = [(1, 'Like'), (-1, 'Dislike')]
+        self.fields['sentiment'].choices = [(2, 'Loved'), (1, 'Like'), (-1, 'Dislike'), (-2, 'Not played yet')]
         self.order_fields(['subject', 'game_id', 'sentiment', 'reason'])
 
 

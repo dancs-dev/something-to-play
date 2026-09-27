@@ -14,14 +14,25 @@
       <article class="preference library-item">
         <h3>{{ entry.game.title }}</h3>
         <div class="actions">
+          <a href="{% url 'preference_new' %}?game={{ entry.game_id }}&amp;feeling=loved&amp;next=library">Loved</a>
           <a href="{% url 'preference_new' %}?game={{ entry.game_id }}&amp;feeling=like&amp;next=library">Like</a>
           <a href="{% url 'preference_new' %}?game={{ entry.game_id }}&amp;feeling=dislike&amp;next=library">Dislike</a>
+          <form method="post" action="{% url 'library_curate' entry.game_id %}">{% csrf_token %}<button class="quiet" name="sentiment" value="-2">Not played yet</button></form>
           <form method="post" action="{% url 'library_curate' entry.game_id %}">{% csrf_token %}<button class="quiet" name="sentiment" value="0">Ignore</button></form>
         </div>
       </article>
     {% empty %}<p>No games need rating right now.</p>{% endfor %}
   </section>
 {% endif %}
+<section class="panel">
+  <h2>Not played yet <span class="muted">{{ not_played|length }}</span></h2>
+  {% for pref in not_played %}
+    <article class="preference library-item">
+      <h3>{{ pref.game.title }}</h3>
+      <div class="actions"><a href="{% url 'preference_edit' pref.pk %}?feeling=loved&amp;next=library">Loved</a><a href="{% url 'preference_edit' pref.pk %}?feeling=like&amp;next=library">Like</a><a href="{% url 'preference_edit' pref.pk %}?feeling=dislike&amp;next=library">Dislike</a><form method="post" action="{% url 'preference_delete' pref.pk %}?next=library">{% csrf_token %}<button class="quiet">Remove</button></form></div>
+    </article>
+  {% empty %}<p>No games marked as not played yet.</p>{% endfor %}
+</section>
 {% for label, games in rated_sections %}
   <section class="panel">
     <h2>{{ label }} <span class="muted">{{ games|length }}</span></h2>

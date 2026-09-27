@@ -38,12 +38,11 @@ p { margin: 12px 0; }
 .narrow { max-width: 560px; margin: 16px auto 40px; padding: 40px; }
 .narrow h1 { font-size: 42px; }
 .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; }
-.two { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
 .grid .panel, .grid .card { margin: 20px 0; min-width: 0; }
-.taste-panel { background: transparent; border: 0; border-top: 1px solid var(--text); padding: 28px 0; }
-.empty-state { padding: 32px 0; max-width: 340px; color: var(--muted); }
-.empty-state h3 { color: var(--text); }
+.home-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+.home-cards .panel { min-width: 0; }
 .request-panel { border-top: 2px solid var(--accent); }
+.request-panel form { max-width: 700px; }
 label { display: block; font-size: 13px; font-weight: 600; margin: 18px 0 7px; }
 input, select, textarea { width: 100%; min-width: 0; padding: 12px; border: 1px solid #aaa99b; border-radius: 2px; background: var(--panel); color: var(--text); font: inherit; }
 textarea { resize: vertical; }
@@ -76,6 +75,7 @@ footer { display: flex; justify-content: space-between; gap: 20px; border-top: 1
   .hero { gap: 28px; grid-template-columns: 1.3fr 1fr; }
   .hero h1 { font-size: 54px; }
   .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .home-cards { grid-template-columns: 1fr; gap: 0; }
 }
 @media(max-width: 600px) {
   header, main, footer { padding: 22px; }
@@ -86,11 +86,10 @@ footer { display: flex; justify-content: space-between; gap: 20px; border-top: 1
   .hero { grid-template-columns: 1fr; padding: 12px 0 40px; gap: 32px; }
   .hero h1 { font-size: 56px; }
   .record { max-width: 340px; width: 100%; justify-self: center; }
-  .steps, .grid, .two { grid-template-columns: 1fr; }
+  .steps, .grid { grid-template-columns: 1fr; }
   .steps { gap: 20px; }
   .steps p { max-width: none; }
   .panel, .card { padding: 22px; }
-  .taste-panel { padding: 22px 0; }
   .grid .panel { margin: 12px 0; }
   .narrow { margin-top: 0; }
   .narrow h1 { font-size: 36px; }

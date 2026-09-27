@@ -7,8 +7,8 @@ from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
-from app.models import CatalogueState, Game, LinkedAccount, Preference, RecommendationRun
-from app.recommendations import RecommendationError, ask_provider
+from app.models import CatalogueState, Game, LinkedAccount, Ownership, Preference, RecommendationRun
+from app.recommendations import RecommendationError, ask_provider, create_run
 
 GAMES = [{'title': 'The Talos Principle', 'rationale': 'Its puzzle solving fits your reasons for liking Portal 2.',
           'drawback': 'The philosophical story may be slower than you want.'}]
@@ -66,8 +66,10 @@ class AppTests(TestCase):
         Preference.objects.create(user=self.other, game=Game.objects.create(title='Private game'), sentiment=-1, reason='Private reason')
         with patch('app.recommendations.ask_provider', return_value=GAMES) as ask:
             response = self.client.post(reverse('recommend'), {'context': 'Something relaxing'}, HTTP_HX_REQUEST='true')
-        ask.assert_called_once_with([{'game': 'Portal 2', 'feeling': 'like', 'reason': 'Clever puzzles'}], 'Something relaxing')
+        ask.assert_called_once_with([{'game': 'Portal 2', 'feeling': 'like', 'reason': 'Clever puzzles'}], 'Something relaxing',
+                                    owned={'replay': [], 'backlog': [], 'all': [], 'known': ['Portal 2']})
         self.assertContains(response, 'The Talos Principle')
+        self.assertContains(response, '/games/search/?query=The%20Talos%20Principle&amp;feeling=dislike')
         self.assertNotContains(response, 'Private game')
         self.assertNotContains(response, 'hx-trigger')
         run = RecommendationRun.objects.get()
@@ -144,7 +146,7 @@ class AppTests(TestCase):
             return httpx.Response(200, json={'choices': [{'finish_reason': 'stop', 'message': {'content': json.dumps({'games': GAMES})}}]})
         taste = [{'game': 'Portal 2', 'feeling': 'like', 'reason': 'Clever puzzles'}]
         with override_settings(OPENAI_COMPATIBLE_BASE_URL='http://localhost:11434/v1', OPENAI_COMPATIBLE_MODEL='qwen3.5:latest', OPENAI_COMPATIBLE_REASONING_EFFORT='none', OPENAI_COMPATIBLE_MAX_TOKENS=1234):
-            self.assertEqual(ask_provider(taste, transport=httpx.MockTransport(respond)), GAMES)
+            self.assertEqual(ask_provider(taste, transport=httpx.MockTransport(respond)), [GAMES[0] | {'category': 'discover'}])
 
     def test_adapter_rejects_invalid_truncated_and_overlong_output(self):
         bodies = [{}, {'choices': []}, {'choices': [{'finish_reason': 'length'}]},
@@ -164,4 +166,57 @@ class AppTests(TestCase):
         games = [GAMES[0], GAMES[0], GAMES[0] | {'title': 'Portal 2'}]
         response = {'choices': [{'finish_reason': 'stop', 'message': {'content': json.dumps({'games': games})}}]}
         result = ask_provider([{'game': 'portal 2'}], transport=httpx.MockTransport(lambda request: httpx.Response(200, json=response)))
-        self.assertEqual(result, GAMES)
+        self.assertEqual(result, [GAMES[0] | {'category': 'discover'}])
+
+    def test_owned_picks_are_verified_and_loved_is_a_strong_signal(self):
+        account = LinkedAccount.objects.create(user=self.user, provider='steam', external_user_id='123')
+        backlog = Game.objects.create(title='Backlog game')
+        ignored = Game.objects.create(title='Ignored game')
+        Ownership.objects.bulk_create([Ownership(account=account, game=game) for game in (self.game, backlog, ignored)])
+        self.preference.sentiment = 2
+        self.preference.save()
+        Preference.objects.create(user=self.user, game=backlog, sentiment=-2)
+        Preference.objects.create(user=self.user, game=ignored, sentiment=0)
+        suggestions = [
+            {'category': 'discover', 'title': 'Portal 2'},
+            {'category': 'replay', 'title': 'Portal 2'},
+            {'category': 'backlog', 'title': 'Backlog game'},
+            {'category': 'discover', 'title': 'Ignored game'},
+            {'category': 'replay', 'title': 'Unknown owned game'},
+            {'category': 'discover', 'title': 'New game'},
+        ]
+        response = {'choices': [{'finish_reason': 'stop', 'message': {'content': json.dumps({
+            'games': [suggestion | {'rationale': 'Fits your taste', 'drawback': 'May be slow'} for suggestion in suggestions],
+        })}}]}
+        owned = {'replay': ['Portal 2'], 'backlog': ['Backlog game'],
+                 'all': ['Backlog game', 'Ignored game', 'Portal 2'],
+                 'known': ['Ignored game', 'Backlog game', 'Portal 2']}
+        picks = ask_provider([{'game': 'Portal 2', 'feeling': 'loved', 'reason': 'Clever puzzles'}], owned=owned,
+                             transport=httpx.MockTransport(lambda request: httpx.Response(200, json=response)))
+        self.assertEqual([(pick['category'], pick['title']) for pick in picks],
+                         [('replay', 'Portal 2'), ('backlog', 'Backlog game'), ('discover', 'New game')])
+        with patch('app.recommendations.ask_provider', return_value=picks) as ask:
+            run = create_run(self.user)
+        self.assertEqual(ask.call_args.args[0], [{'game': 'Portal 2', 'feeling': 'loved', 'reason': 'Clever puzzles'}])
+        self.assertEqual(ask.call_args.kwargs['owned'], owned)
+        page = self.client.get(reverse('run', args=[run.pk]))
+        self.assertContains(page, 'Favourites to revisit')
+        self.assertContains(page, "Games you haven't played yet")
+        self.assertContains(page, 'New games to explore')
+
+    def test_recommender_accepts_three_picks_in_each_group(self):
+        owned = {
+            'replay': [f'Replay {n}' for n in range(3)],
+            'backlog': [f'Backlog {n}' for n in range(3)],
+            'all': [f'Replay {n}' for n in range(3)] + [f'Backlog {n}' for n in range(3)],
+            'known': [],
+        }
+        games = [
+            {'category': category, 'title': f'{name} {n}', 'rationale': 'Good fit', 'drawback': 'Maybe slow'}
+            for category, name in (('replay', 'Replay'), ('backlog', 'Backlog'), ('discover', 'New'))
+            for n in range(3)
+        ]
+        response = {'choices': [{'finish_reason': 'stop', 'message': {'content': json.dumps({'games': games})}}]}
+        result = ask_provider([], owned=owned,
+                              transport=httpx.MockTransport(lambda request: httpx.Response(200, json=response)))
+        self.assertEqual(result, games)
