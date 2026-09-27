@@ -2,174 +2,185 @@
 
 from django.conf import settings
 from django.db import migrations, models
+from django.db.backends.base.schema import BaseDatabaseSchemaEditor
+from django.db.migrations.state import StateApps
 
 
-def preserve_duplicate_subjects(apps, schema_editor):
-    # The old schema allowed a game and mechanic with the same name. Preserve both reasons.
-    Preference = apps.get_model('app', 'Preference')
+def preserve_duplicate_subjects(
+    apps: StateApps, schema_editor: BaseDatabaseSchemaEditor
+) -> None:
+    # Keep both reasons because games and mechanics could share a name.
+    Preference = apps.get_model("app", "Preference")
     entries = Preference.objects.using(schema_editor.connection.alias)
-    for preference in entries.order_by('pk'):
-        if entries.filter(user_id=preference.user_id, subject=preference.subject).exclude(pk=preference.pk).exists():
-            suffix = f' ({preference.kind} entry {preference.pk})'
-            preference.subject = preference.subject[:200 - len(suffix)] + suffix
-            preference.save(using=schema_editor.connection.alias, update_fields=['subject'])
+    for preference in entries.order_by("pk"):
+        if (
+            entries.filter(user_id=preference.user_id, subject=preference.subject)
+            .exclude(pk=preference.pk)
+            .exists()
+        ):
+            suffix = f" ({preference.kind} entry {preference.pk})"
+            preference.subject = preference.subject[: 200 - len(suffix)] + suffix
+            preference.save(
+                using=schema_editor.connection.alias, update_fields=["subject"]
+            )
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('app', '0003_drop_retired_constraints'),
+        ("app", "0003_drop_retired_constraints"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
         migrations.RunPython(preserve_duplicate_subjects, migrations.RunPython.noop),
         migrations.RemoveField(
-            model_name='conversationturn',
-            name='user',
+            model_name="conversationturn",
+            name="user",
         ),
         migrations.RemoveField(
-            model_name='feedback',
-            name='game',
+            model_name="feedback",
+            name="game",
         ),
         migrations.RemoveField(
-            model_name='feedback',
-            name='run',
+            model_name="feedback",
+            name="run",
         ),
         migrations.RemoveField(
-            model_name='feedback',
-            name='user',
+            model_name="feedback",
+            name="user",
         ),
         migrations.RemoveField(
-            model_name='reviewevidence',
-            name='game',
+            model_name="reviewevidence",
+            name="game",
         ),
         migrations.RemoveField(
-            model_name='preference',
-            name='game',
+            model_name="preference",
+            name="game",
         ),
         migrations.RemoveField(
-            model_name='gameevidence',
-            name='game',
+            model_name="gameevidence",
+            name="game",
         ),
         migrations.RemoveField(
-            model_name='gamemode',
-            name='game',
+            model_name="gamemode",
+            name="game",
         ),
         migrations.RemoveField(
-            model_name='ownershipactivity',
-            name='game',
+            model_name="ownershipactivity",
+            name="game",
         ),
         migrations.RemoveField(
-            model_name='gameevidence',
-            name='mode',
+            model_name="gameevidence",
+            name="mode",
         ),
         migrations.DeleteModel(
-            name='OpenIDNonce',
+            name="OpenIDNonce",
         ),
         migrations.RemoveField(
-            model_name='ownershipactivity',
-            name='user',
+            model_name="ownershipactivity",
+            name="user",
         ),
         migrations.RemoveField(
-            model_name='playtimesnapshot',
-            name='activity',
+            model_name="playtimesnapshot",
+            name="activity",
         ),
         migrations.RemoveField(
-            model_name='steamaccount',
-            name='user',
+            model_name="steamaccount",
+            name="user",
         ),
         migrations.AlterModelOptions(
-            name='preference',
-            options={'ordering': ['-updated_at']},
+            name="preference",
+            options={"ordering": ["-updated_at"]},
         ),
         migrations.RemoveConstraint(
-            model_name='preference',
-            name='unique_preference_subject',
+            model_name="preference",
+            name="unique_preference_subject",
         ),
         migrations.RemoveConstraint(
-            model_name='preference',
-            name='preference_confidence_range',
+            model_name="preference",
+            name="preference_confidence_range",
         ),
         migrations.RemoveField(
-            model_name='preference',
-            name='confidence',
+            model_name="preference",
+            name="confidence",
         ),
         migrations.RemoveField(
-            model_name='preference',
-            name='explicit',
+            model_name="preference",
+            name="explicit",
         ),
         migrations.RemoveField(
-            model_name='preference',
-            name='kind',
+            model_name="preference",
+            name="kind",
         ),
         migrations.RemoveField(
-            model_name='preference',
-            name='source',
+            model_name="preference",
+            name="source",
         ),
         migrations.RemoveField(
-            model_name='recommendationrun',
-            name='deterministic_results',
+            model_name="recommendationrun",
+            name="deterministic_results",
         ),
         migrations.RemoveField(
-            model_name='recommendationrun',
-            name='diagnostics',
+            model_name="recommendationrun",
+            name="diagnostics",
         ),
         migrations.RemoveField(
-            model_name='recommendationrun',
-            name='lease_until',
+            model_name="recommendationrun",
+            name="lease_until",
         ),
         migrations.RemoveField(
-            model_name='recommendationrun',
-            name='scores',
+            model_name="recommendationrun",
+            name="scores",
         ),
         migrations.RemoveField(
-            model_name='recommendationrun',
-            name='scoring_version',
+            model_name="recommendationrun",
+            name="scoring_version",
         ),
         migrations.RemoveField(
-            model_name='recommendationrun',
-            name='status',
+            model_name="recommendationrun",
+            name="status",
         ),
         migrations.AlterField(
-            model_name='preference',
-            name='reason',
-            field=models.TextField(blank=True, max_length=2000, verbose_name='why'),
+            model_name="preference",
+            name="reason",
+            field=models.TextField(blank=True, max_length=2000, verbose_name="why"),
         ),
         migrations.AlterField(
-            model_name='preference',
-            name='subject',
-            field=models.CharField(max_length=200, verbose_name='game'),
+            model_name="preference",
+            name="subject",
+            field=models.CharField(max_length=200, verbose_name="game"),
         ),
         migrations.AddConstraint(
-            model_name='preference',
-            constraint=models.UniqueConstraint(fields=('user', 'subject'), name='unique_user_taste'),
+            model_name="preference",
+            constraint=models.UniqueConstraint(
+                fields=("user", "subject"), name="unique_user_taste"
+            ),
         ),
         migrations.DeleteModel(
-            name='ConversationTurn',
+            name="ConversationTurn",
         ),
         migrations.DeleteModel(
-            name='Feedback',
+            name="Feedback",
         ),
         migrations.DeleteModel(
-            name='ReviewEvidence',
+            name="ReviewEvidence",
         ),
         migrations.DeleteModel(
-            name='Game',
+            name="Game",
         ),
         migrations.DeleteModel(
-            name='GameEvidence',
+            name="GameEvidence",
         ),
         migrations.DeleteModel(
-            name='GameMode',
+            name="GameMode",
         ),
         migrations.DeleteModel(
-            name='OwnershipActivity',
+            name="OwnershipActivity",
         ),
         migrations.DeleteModel(
-            name='PlaytimeSnapshot',
+            name="PlaytimeSnapshot",
         ),
         migrations.DeleteModel(
-            name='SteamAccount',
+            name="SteamAccount",
         ),
     ]

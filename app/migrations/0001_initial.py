@@ -7,7 +7,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     initial = True
 
     dependencies = [
@@ -16,194 +15,514 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.CreateModel(
-            name='Game',
+            name="Game",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('session_minutes', models.PositiveIntegerField(blank=True, null=True)),
-                ('attention', models.PositiveSmallIntegerField(blank=True, choices=[(1, 'Low'), (2, 'Medium'), (3, 'High')], null=True)),
-                ('intensity', models.PositiveSmallIntegerField(blank=True, choices=[(1, 'Low'), (2, 'Medium'), (3, 'High')], null=True)),
-                ('pause_flexible', models.BooleanField(blank=True, null=True)),
-                ('learning_effort', models.PositiveSmallIntegerField(blank=True, choices=[(1, 'Low'), (2, 'Medium'), (3, 'High')], null=True)),
-                ('solo', models.BooleanField(blank=True, null=True)),
-                ('coop', models.BooleanField(blank=True, null=True)),
-                ('competitive', models.BooleanField(blank=True, null=True)),
-                ('title', models.CharField(max_length=200)),
-                ('steam_appid', models.PositiveIntegerField(blank=True, null=True, unique=True)),
-                ('platforms', models.JSONField(default=list)),
-                ('mechanics', models.JSONField(default=list)),
-                ('themes', models.JSONField(default=list)),
-                ('demonstration', models.BooleanField(default=False)),
-                ('source_url', models.URLField(blank=True)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("session_minutes", models.PositiveIntegerField(blank=True, null=True)),
+                (
+                    "attention",
+                    models.PositiveSmallIntegerField(
+                        blank=True,
+                        choices=[(1, "Low"), (2, "Medium"), (3, "High")],
+                        null=True,
+                    ),
+                ),
+                (
+                    "intensity",
+                    models.PositiveSmallIntegerField(
+                        blank=True,
+                        choices=[(1, "Low"), (2, "Medium"), (3, "High")],
+                        null=True,
+                    ),
+                ),
+                ("pause_flexible", models.BooleanField(blank=True, null=True)),
+                (
+                    "learning_effort",
+                    models.PositiveSmallIntegerField(
+                        blank=True,
+                        choices=[(1, "Low"), (2, "Medium"), (3, "High")],
+                        null=True,
+                    ),
+                ),
+                ("solo", models.BooleanField(blank=True, null=True)),
+                ("coop", models.BooleanField(blank=True, null=True)),
+                ("competitive", models.BooleanField(blank=True, null=True)),
+                ("title", models.CharField(max_length=200)),
+                (
+                    "steam_appid",
+                    models.PositiveIntegerField(blank=True, null=True, unique=True),
+                ),
+                ("platforms", models.JSONField(default=list)),
+                ("mechanics", models.JSONField(default=list)),
+                ("themes", models.JSONField(default=list)),
+                ("demonstration", models.BooleanField(default=False)),
+                ("source_url", models.URLField(blank=True)),
             ],
             options={
-                'ordering': ['title', 'pk'],
+                "ordering": ["title", "pk"],
             },
         ),
         migrations.CreateModel(
-            name='OpenIDNonce',
+            name="OpenIDNonce",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('value', models.CharField(max_length=255, unique=True)),
-                ('used_at', models.DateTimeField(auto_now_add=True)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("value", models.CharField(max_length=255, unique=True)),
+                ("used_at", models.DateTimeField(auto_now_add=True)),
             ],
         ),
         migrations.CreateModel(
-            name='ConversationTurn',
+            name="ConversationTurn",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('text', models.TextField(max_length=4000)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('status', models.CharField(default='manual', max_length=20)),
-                ('proposals', models.JSONField(default=list)),
-                ('prompt_version', models.CharField(blank=True, max_length=30)),
-                ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("text", models.TextField(max_length=4000)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("status", models.CharField(default="manual", max_length=20)),
+                ("proposals", models.JSONField(default=list)),
+                ("prompt_version", models.CharField(blank=True, max_length=30)),
+                (
+                    "user",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
         ),
         migrations.CreateModel(
-            name='GameMode',
+            name="GameMode",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('session_minutes', models.PositiveIntegerField(blank=True, null=True)),
-                ('attention', models.PositiveSmallIntegerField(blank=True, choices=[(1, 'Low'), (2, 'Medium'), (3, 'High')], null=True)),
-                ('intensity', models.PositiveSmallIntegerField(blank=True, choices=[(1, 'Low'), (2, 'Medium'), (3, 'High')], null=True)),
-                ('pause_flexible', models.BooleanField(blank=True, null=True)),
-                ('learning_effort', models.PositiveSmallIntegerField(blank=True, choices=[(1, 'Low'), (2, 'Medium'), (3, 'High')], null=True)),
-                ('solo', models.BooleanField(blank=True, null=True)),
-                ('coop', models.BooleanField(blank=True, null=True)),
-                ('competitive', models.BooleanField(blank=True, null=True)),
-                ('name', models.CharField(max_length=100)),
-                ('game', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='modes', to='app.game')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("session_minutes", models.PositiveIntegerField(blank=True, null=True)),
+                (
+                    "attention",
+                    models.PositiveSmallIntegerField(
+                        blank=True,
+                        choices=[(1, "Low"), (2, "Medium"), (3, "High")],
+                        null=True,
+                    ),
+                ),
+                (
+                    "intensity",
+                    models.PositiveSmallIntegerField(
+                        blank=True,
+                        choices=[(1, "Low"), (2, "Medium"), (3, "High")],
+                        null=True,
+                    ),
+                ),
+                ("pause_flexible", models.BooleanField(blank=True, null=True)),
+                (
+                    "learning_effort",
+                    models.PositiveSmallIntegerField(
+                        blank=True,
+                        choices=[(1, "Low"), (2, "Medium"), (3, "High")],
+                        null=True,
+                    ),
+                ),
+                ("solo", models.BooleanField(blank=True, null=True)),
+                ("coop", models.BooleanField(blank=True, null=True)),
+                ("competitive", models.BooleanField(blank=True, null=True)),
+                ("name", models.CharField(max_length=100)),
+                (
+                    "game",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="modes",
+                        to="app.game",
+                    ),
+                ),
             ],
         ),
         migrations.CreateModel(
-            name='GameEvidence',
+            name="GameEvidence",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('attribute', models.CharField(choices=[('mechanics', 'mechanics'), ('themes', 'themes'), ('platforms', 'platforms'), ('solo', 'solo'), ('coop', 'coop'), ('competitive', 'competitive'), ('session_minutes', 'session_minutes'), ('attention', 'attention'), ('intensity', 'intensity'), ('pause_flexible', 'pause_flexible'), ('learning_effort', 'learning_effort')], max_length=40)),
-                ('value', models.JSONField()),
-                ('source', models.CharField(max_length=40)),
-                ('source_url', models.URLField(blank=True)),
-                ('excerpt', models.TextField(blank=True)),
-                ('confidence', models.FloatField(default=0.5, validators=[django.core.validators.MinValueValidator(0), django.core.validators.MaxValueValidator(1)])),
-                ('verified', models.BooleanField(default=False)),
-                ('observed_at', models.DateTimeField(auto_now_add=True)),
-                ('game', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='evidence', to='app.game')),
-                ('mode', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, to='app.gamemode')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "attribute",
+                    models.CharField(
+                        choices=[
+                            ("mechanics", "mechanics"),
+                            ("themes", "themes"),
+                            ("platforms", "platforms"),
+                            ("solo", "solo"),
+                            ("coop", "coop"),
+                            ("competitive", "competitive"),
+                            ("session_minutes", "session_minutes"),
+                            ("attention", "attention"),
+                            ("intensity", "intensity"),
+                            ("pause_flexible", "pause_flexible"),
+                            ("learning_effort", "learning_effort"),
+                        ],
+                        max_length=40,
+                    ),
+                ),
+                ("value", models.JSONField()),
+                ("source", models.CharField(max_length=40)),
+                ("source_url", models.URLField(blank=True)),
+                ("excerpt", models.TextField(blank=True)),
+                (
+                    "confidence",
+                    models.FloatField(
+                        default=0.5,
+                        validators=[
+                            django.core.validators.MinValueValidator(0),
+                            django.core.validators.MaxValueValidator(1),
+                        ],
+                    ),
+                ),
+                ("verified", models.BooleanField(default=False)),
+                ("observed_at", models.DateTimeField(auto_now_add=True)),
+                (
+                    "game",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="evidence",
+                        to="app.game",
+                    ),
+                ),
+                (
+                    "mode",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="app.gamemode",
+                    ),
+                ),
             ],
         ),
         migrations.CreateModel(
-            name='OwnershipActivity',
+            name="OwnershipActivity",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('manual_owned', models.BooleanField(blank=True, null=True)),
-                ('steam_owned', models.BooleanField(blank=True, null=True)),
-                ('total_minutes', models.PositiveIntegerField(blank=True, null=True)),
-                ('recent_minutes', models.PositiveIntegerField(blank=True, null=True)),
-                ('observed_at', models.DateTimeField(blank=True, null=True)),
-                ('game', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='app.game')),
-                ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("manual_owned", models.BooleanField(blank=True, null=True)),
+                ("steam_owned", models.BooleanField(blank=True, null=True)),
+                ("total_minutes", models.PositiveIntegerField(blank=True, null=True)),
+                ("recent_minutes", models.PositiveIntegerField(blank=True, null=True)),
+                ("observed_at", models.DateTimeField(blank=True, null=True)),
+                (
+                    "game",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE, to="app.game"
+                    ),
+                ),
+                (
+                    "user",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
         ),
         migrations.CreateModel(
-            name='PlaytimeSnapshot',
+            name="PlaytimeSnapshot",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('observed_at', models.DateTimeField()),
-                ('total_minutes', models.PositiveIntegerField()),
-                ('recent_minutes', models.PositiveIntegerField(null=True)),
-                ('activity', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='snapshots', to='app.ownershipactivity')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("observed_at", models.DateTimeField()),
+                ("total_minutes", models.PositiveIntegerField()),
+                ("recent_minutes", models.PositiveIntegerField(null=True)),
+                (
+                    "activity",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="snapshots",
+                        to="app.ownershipactivity",
+                    ),
+                ),
             ],
         ),
         migrations.CreateModel(
-            name='Preference',
+            name="Preference",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('subject', models.CharField(help_text='Game title, mechanic or theme', max_length=200)),
-                ('kind', models.CharField(choices=[('game', 'Game'), ('mechanic', 'Mechanic'), ('theme', 'Theme')], default='game', max_length=20)),
-                ('sentiment', models.SmallIntegerField(choices=[(1, 'Like'), (-1, 'Dislike')])),
-                ('reason', models.TextField(blank=True, max_length=2000)),
-                ('source', models.CharField(default='manual', max_length=30)),
-                ('confidence', models.FloatField(default=1, validators=[django.core.validators.MinValueValidator(0), django.core.validators.MaxValueValidator(1)])),
-                ('explicit', models.BooleanField(default=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('game', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, to='app.game')),
-                ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "subject",
+                    models.CharField(
+                        help_text="Game title, mechanic or theme", max_length=200
+                    ),
+                ),
+                (
+                    "kind",
+                    models.CharField(
+                        choices=[
+                            ("game", "Game"),
+                            ("mechanic", "Mechanic"),
+                            ("theme", "Theme"),
+                        ],
+                        default="game",
+                        max_length=20,
+                    ),
+                ),
+                (
+                    "sentiment",
+                    models.SmallIntegerField(choices=[(1, "Like"), (-1, "Dislike")]),
+                ),
+                ("reason", models.TextField(blank=True, max_length=2000)),
+                ("source", models.CharField(default="manual", max_length=30)),
+                (
+                    "confidence",
+                    models.FloatField(
+                        default=1,
+                        validators=[
+                            django.core.validators.MinValueValidator(0),
+                            django.core.validators.MaxValueValidator(1),
+                        ],
+                    ),
+                ),
+                ("explicit", models.BooleanField(default=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "game",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        to="app.game",
+                    ),
+                ),
+                (
+                    "user",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
         ),
         migrations.CreateModel(
-            name='RecommendationRun',
+            name="RecommendationRun",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('inputs', models.JSONField()),
-                ('scoring_version', models.CharField(default='scoring-v1', max_length=30)),
-                ('scores', models.JSONField(default=list)),
-                ('results', models.JSONField(default=list)),
-                ('deterministic_results', models.JSONField(default=list)),
-                ('status', models.CharField(default='deterministic', max_length=20)),
-                ('lease_until', models.DateTimeField(blank=True, null=True)),
-                ('diagnostics', models.JSONField(default=dict)),
-                ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("inputs", models.JSONField()),
+                (
+                    "scoring_version",
+                    models.CharField(default="scoring-v1", max_length=30),
+                ),
+                ("scores", models.JSONField(default=list)),
+                ("results", models.JSONField(default=list)),
+                ("deterministic_results", models.JSONField(default=list)),
+                ("status", models.CharField(default="deterministic", max_length=20)),
+                ("lease_until", models.DateTimeField(blank=True, null=True)),
+                ("diagnostics", models.JSONField(default=dict)),
+                (
+                    "user",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
         ),
         migrations.CreateModel(
-            name='Feedback',
+            name="Feedback",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('kind', models.CharField(choices=[('like', 'Good fit'), ('not_tonight', 'Not tonight'), ('dislike', 'I dislike this game')], max_length=20)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to=settings.AUTH_USER_MODEL)),
-                ('game', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='app.game')),
-                ('run', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='feedback', to='app.recommendationrun')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "kind",
+                    models.CharField(
+                        choices=[
+                            ("like", "Good fit"),
+                            ("not_tonight", "Not tonight"),
+                            ("dislike", "I dislike this game"),
+                        ],
+                        max_length=20,
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                (
+                    "user",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "game",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE, to="app.game"
+                    ),
+                ),
+                (
+                    "run",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="feedback",
+                        to="app.recommendationrun",
+                    ),
+                ),
             ],
         ),
         migrations.CreateModel(
-            name='ReviewEvidence',
+            name="ReviewEvidence",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('external_id', models.CharField(max_length=40, unique=True)),
-                ('excerpt', models.TextField()),
-                ('positive', models.BooleanField()),
-                ('source_url', models.URLField()),
-                ('observed_at', models.DateTimeField(auto_now=True)),
-                ('game', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='reviews', to='app.game')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("external_id", models.CharField(max_length=40, unique=True)),
+                ("excerpt", models.TextField()),
+                ("positive", models.BooleanField()),
+                ("source_url", models.URLField()),
+                ("observed_at", models.DateTimeField(auto_now=True)),
+                (
+                    "game",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="reviews",
+                        to="app.game",
+                    ),
+                ),
             ],
         ),
         migrations.CreateModel(
-            name='SteamAccount',
+            name="SteamAccount",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('steam_id', models.CharField(max_length=20, unique=True)),
-                ('sync_requested', models.BooleanField(default=True)),
-                ('status', models.CharField(default='pending', max_length=20)),
-                ('last_attempt_at', models.DateTimeField(blank=True, null=True)),
-                ('last_synced_at', models.DateTimeField(blank=True, null=True)),
-                ('error', models.CharField(blank=True, max_length=250)),
-                ('user', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='steam_account', to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("steam_id", models.CharField(max_length=20, unique=True)),
+                ("sync_requested", models.BooleanField(default=True)),
+                ("status", models.CharField(default="pending", max_length=20)),
+                ("last_attempt_at", models.DateTimeField(blank=True, null=True)),
+                ("last_synced_at", models.DateTimeField(blank=True, null=True)),
+                ("error", models.CharField(blank=True, max_length=250)),
+                (
+                    "user",
+                    models.OneToOneField(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="steam_account",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
         ),
         migrations.AddConstraint(
-            model_name='gamemode',
-            constraint=models.UniqueConstraint(fields=('game', 'name'), name='unique_game_mode'),
+            model_name="gamemode",
+            constraint=models.UniqueConstraint(
+                fields=("game", "name"), name="unique_game_mode"
+            ),
         ),
         migrations.AddConstraint(
-            model_name='ownershipactivity',
-            constraint=models.UniqueConstraint(fields=('user', 'game'), name='unique_user_game'),
+            model_name="ownershipactivity",
+            constraint=models.UniqueConstraint(
+                fields=("user", "game"), name="unique_user_game"
+            ),
         ),
         migrations.AddConstraint(
-            model_name='playtimesnapshot',
-            constraint=models.UniqueConstraint(fields=('activity', 'observed_at'), name='unique_playtime_observation'),
+            model_name="playtimesnapshot",
+            constraint=models.UniqueConstraint(
+                fields=("activity", "observed_at"), name="unique_playtime_observation"
+            ),
         ),
         migrations.AddConstraint(
-            model_name='preference',
-            constraint=models.UniqueConstraint(fields=('user', 'kind', 'subject'), name='unique_preference_subject'),
+            model_name="preference",
+            constraint=models.UniqueConstraint(
+                fields=("user", "kind", "subject"), name="unique_preference_subject"
+            ),
         ),
         migrations.AddConstraint(
-            model_name='preference',
-            constraint=models.CheckConstraint(condition=models.Q(('confidence__gte', 0), ('confidence__lte', 1)), name='preference_confidence_range'),
+            model_name="preference",
+            constraint=models.CheckConstraint(
+                condition=models.Q(("confidence__gte", 0), ("confidence__lte", 1)),
+                name="preference_confidence_range",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='feedback',
-            constraint=models.UniqueConstraint(fields=('user', 'run', 'game'), name='unique_run_feedback'),
+            model_name="feedback",
+            constraint=models.UniqueConstraint(
+                fields=("user", "run", "game"), name="unique_run_feedback"
+            ),
         ),
     ]

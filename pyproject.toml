@@ -7,3 +7,28 @@ dependencies = [
     "httpx>=0.28.1",
     "pydantic>=2.13.5",
 ]
+
+[dependency-groups]
+dev = [
+    "django-stubs[compatible-mypy]",
+    "mypy",
+    "playwright",
+    "ruff",
+]
+
+[tool.ruff]
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "UP", "ANN", "B", "DJ", "SIM", "I"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+plugins = ["mypy_django_plugin.main"]
+python_version = "3.12"
+check_untyped_defs = true
+
+[tool.django-stubs]
+django_settings_module = "config.settings"

@@ -4,15 +4,22 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('app', '0005_steam_library'),
+        ("app", "0005_steam_library"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='preference',
-            name='sentiment',
-            field=models.SmallIntegerField(choices=[(2, 'Loved'), (1, 'Like'), (-1, 'Dislike'), (0, 'Ignore'), (-2, 'Not played yet')]),
+            model_name="preference",
+            name="sentiment",
+            field=models.SmallIntegerField(
+                choices=[
+                    (2, "Loved"),
+                    (1, "Like"),
+                    (-1, "Dislike"),
+                    (0, "Ignore"),
+                    (-2, "Not played yet"),
+                ]
+            ),
         ),
     ]

@@ -4,26 +4,25 @@ from django.db import migrations
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('app', '0002_alter_gameevidence_value'),
+        ("app", "0002_alter_gameevidence_value"),
     ]
 
     operations = [
         migrations.RemoveConstraint(
-            model_name='feedback',
-            name='unique_run_feedback',
+            model_name="feedback",
+            name="unique_run_feedback",
         ),
         migrations.RemoveConstraint(
-            model_name='gamemode',
-            name='unique_game_mode',
+            model_name="gamemode",
+            name="unique_game_mode",
         ),
         migrations.RemoveConstraint(
-            model_name='ownershipactivity',
-            name='unique_user_game',
+            model_name="ownershipactivity",
+            name="unique_user_game",
         ),
         migrations.RemoveConstraint(
-            model_name='playtimesnapshot',
-            name='unique_playtime_observation',
+            model_name="playtimesnapshot",
+            name="unique_playtime_observation",
         ),
     ]
