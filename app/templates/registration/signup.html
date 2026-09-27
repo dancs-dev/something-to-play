@@ -3,6 +3,16 @@
 <section class="panel narrow">
   <h1>Create your account</h1>
   <p>Keep your own list of games and recommendations.</p>
-  <form method="post">{% csrf_token %}{{ form.as_p }}<button>Create account</button></form>
+  <form method="post">
+    {% csrf_token %}
+    {{ form.non_field_errors }}
+    {% for field in form.visible_fields %}
+      {{ field.label_tag }}
+      {{ field }}
+      {{ field.errors }}
+    {% endfor %}
+    {% for field in form.hidden_fields %}{{ field }}{% endfor %}
+    <p><button>Create account</button></p>
+  </form>
 </section>
 {% endblock %}

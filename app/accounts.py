@@ -10,6 +10,12 @@ class SignupView(FormView):
     template_name = 'registration/signup.html'
     success_url = reverse_lazy('onboarding')
 
+    def get_form(self, form_class=None):
+        form = super().get_form(form_class)
+        for field in form.fields.values():
+            field.help_text = ''
+        return form
+
     def dispatch(self, request, *args, **kwargs):
         if request.user.is_authenticated:
             return redirect('home')

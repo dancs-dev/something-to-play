@@ -39,6 +39,17 @@ class AppTests(TestCase):
         self.client.post(reverse('preference_delete', args=[pref.pk]))
         self.assertFalse(Preference.objects.filter(pk=pref.pk).exists())
 
+    def test_signup_errors_follow_their_fields_without_upfront_guidance(self):
+        self.client.logout()
+        self.assertNotContains(self.client.get(reverse('signup')), 'Your password must contain at least 8 characters.')
+        response = self.client.post(reverse('signup'), {
+            'username': 'alice', 'password1': '123', 'password2': '123',
+        })
+        html = response.content.decode()
+        self.assertLess(html.index('name="username"'), html.index('A user with that username already exists.'))
+        self.assertLess(html.index('A user with that username already exists.'), html.index('name="password1"'))
+        self.assertLess(html.index('name="password2"'), html.index('This password is too short.'))
+
     def test_case_insensitive_duplicate_updates_existing_game(self):
         self.client.post(reverse('preference_new'), {'subject': 'PORTAL 2', 'sentiment': -1, 'reason': 'Changed my mind'})
         self.assertEqual(Preference.objects.filter(user=self.user).count(), 1)
