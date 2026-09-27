@@ -17,7 +17,7 @@
     {% empty %}
       <p>No games found with that title.</p>
     {% endfor %}
-    {% if not exact_match %}<p><a href="{% url 'preference_new' %}?title={{ query|urlencode }}&amp;feeling={{ feeling|urlencode }}">Add “{{ query }}” yourself</a></p>{% endif %}
+    {% if not exact_match %}<p><a href="{% url 'preference_new' %}?title={{ query|urlencode }}&amp;feeling={{ feeling|urlencode }}">Add "{{ query }}" yourself</a></p>{% endif %}
   {% endif %}
 </section>
 {% endblock %}

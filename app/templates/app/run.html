@@ -4,6 +4,6 @@
   <p class="eyebrow">SAVED RECOMMENDATIONS</p>
   <h1>Your game suggestions</h1>
   {% if run.inputs.request %}<p class="lead">{{ run.inputs.request }}</p>{% endif %}
-  <p><a href="{% url 'home' %}">Find more games →</a></p>
+  <p><a href="{% url 'home' %}">Find more games -></a></p>
   {% include 'app/results.html' %}
 {% endblock %}
