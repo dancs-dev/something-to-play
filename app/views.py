@@ -390,7 +390,9 @@ class SteamLinkView(LoginRequiredMixin, View):
             except SteamError as exc:
                 messages.error(request, str(exc))
         else:
-            messages.error(request, "Enter a Steam ID or profile URL.")
+            messages.error(
+                request, "Enter a Steam ID, custom URL name, or profile URL."
+            )
         return redirect("settings")
 
 

@@ -28,7 +28,7 @@ class SteamTests(TestCase):
         self.user = get_user_model().objects.create_user("alice", password="pw")
         self.other = get_user_model().objects.create_user("bob", password="pw")
         self.account = LinkedAccount.objects.create(
-            user=self.user, provider="steam", external_user_id="76561198000000000"
+            user=self.user, provider="steam", external_user_id="1234567890"
         )
         self.client.force_login(self.user)
 
@@ -104,6 +104,21 @@ class SteamTests(TestCase):
             [request.url.params["if_modified_since"] for request in requests[4:]],
             ["42", "42"],
         )
+
+    def test_bare_custom_url_name_links_steam_profile(self) -> None:
+        with patch(
+            "app.steam._get",
+            return_value={"response": {"success": 1, "steamid": "1234567891"}},
+        ) as get:
+            response = self.client.post(reverse("steam_link"), {"profile": "alice"})
+        self.assertEqual(response.status_code, 302)
+        get.assert_called_once_with(
+            "/ISteamUser/ResolveVanityURL/v1/",
+            {"vanityurl": "alice"},
+            transport=None,
+        )
+        self.account.refresh_from_db()
+        self.assertEqual(self.account.external_user_id, "1234567891")
 
     def test_catalogue_refresh_uses_previous_successful_start_time(self) -> None:
         previous = timezone.now() - timedelta(days=1)

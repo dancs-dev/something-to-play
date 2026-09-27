@@ -1,5 +1,6 @@
 """Steam Web API boundary. No Steam data is fetched outside explicit user actions."""
 
+import re
 from collections.abc import Iterator, Mapping
 from urllib.parse import urlparse
 
@@ -40,29 +41,34 @@ def resolve_profile(value: str, *, transport: httpx.BaseTransport | None = None)
     value = value.strip().rstrip("/")
     if value.isdecimal() and 0 < int(value) < 2**64:
         return value
-    parsed = urlparse(value)
-    if parsed.scheme != "https" or parsed.netloc.lower() not in {
-        "steamcommunity.com",
-        "www.steamcommunity.com",
-    }:
-        raise SteamError(
-            "Enter a Steam ID or an https://steamcommunity.com profile URL."
-        )
-    parts = parsed.path.strip("/").split("/")
-    if len(parts) != 2 or not parts[1] or parsed.query or parsed.fragment:
-        raise SteamError("Enter a Steam profile URL.")
-    if parts[0] == "profiles":
-        return resolve_profile(parts[1])
-    if parts[0] != "id":
-        raise SteamError("Enter a Steam profile URL.")
+    if re.fullmatch(r"[A-Za-z0-9_-]+", value) and not value.isdecimal():
+        vanity = value
+    else:
+        parsed = urlparse(value)
+        if parsed.scheme != "https" or parsed.netloc.lower() not in {
+            "steamcommunity.com",
+            "www.steamcommunity.com",
+        }:
+            raise SteamError(
+                "Enter a Steam ID, custom URL name, or "
+                "https://steamcommunity.com profile URL."
+            )
+        parts = parsed.path.strip("/").split("/")
+        if len(parts) != 2 or not parts[1] or parsed.query or parsed.fragment:
+            raise SteamError("Enter a Steam profile URL.")
+        if parts[0] == "profiles":
+            return resolve_profile(parts[1])
+        if parts[0] != "id":
+            raise SteamError("Enter a Steam profile URL.")
+        vanity = parts[1]
     data = _get(
-        "/ISteamUser/ResolveVanityURL/v1/", {"vanityurl": parts[1]}, transport=transport
+        "/ISteamUser/ResolveVanityURL/v1/", {"vanityurl": vanity}, transport=transport
     )
     if not isinstance(data, dict):
         raise SteamError("Steam returned an invalid profile response.")
     response = data.get("response", {})
     if response.get("success") != 1 or not str(response.get("steamid", "")).isdecimal():
-        raise SteamError("Steam could not find that profile URL.")
+        raise SteamError("Steam could not find that profile.")
     return str(response["steamid"])
 
 

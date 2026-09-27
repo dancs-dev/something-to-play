@@ -38,7 +38,9 @@ class PreferenceForm(forms.ModelForm):
 
 
 class SteamLinkForm(forms.Form):
-    profile = forms.CharField(max_length=200, label="Steam ID or profile URL")
+    profile = forms.CharField(
+        max_length=200, label="Steam ID, custom URL name, or profile URL"
+    )
 
 
 class GameSearchForm(forms.Form):
