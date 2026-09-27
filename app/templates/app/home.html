@@ -1,4 +1,5 @@
 {% extends 'app/base.html' %}
+{% load static %}
 {% block content %}
 {% if user.is_authenticated %}
   {% if has_taste %}
@@ -42,12 +43,9 @@
       <h1>Less scrolling.<br>More <em>playing.</em></h1>
       <p class="lead">That feeling when a game just clicks? Let’s find it again. Turn the games you love into your next great discovery.</p>
       <a class="button" href="{% url 'signup' %}">Get started <span aria-hidden="true">↗</span></a>
-      <span class="hero-note">Your taste in. A few good picks out.</span>
+      <span class="hero-note">Save your taste. Find your next adventure.</span>
     </div>
-    <div class="record" aria-hidden="true">
-      <div class="record-label"><span>NEXT PLAY</span><strong>Your mix.</strong><span>SIDE A / 01</span></div>
-      <span class="record-caption">VOL. 01 — SOMETHING GOOD IS NEXT</span>
-    </div>
+    <img class="game-art" src="{% static 'app/hero-game.svg' %}" alt="" aria-hidden="true">
   </section>
   <section class="steps" aria-label="How it works">
     <div><span class="section-number">01 / COLLECT</span><h2>Start with your favorites.</h2><p>The games you loved. The ones you didn’t. Give your taste a place to live.</p></div>
