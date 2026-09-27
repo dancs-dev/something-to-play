@@ -214,7 +214,7 @@ requires-dist = [
 dev = [
     { name = "django-stubs", extras = ["compatible-mypy"] },
     { name = "mypy" },
-    { name = "playwright" },
+    { name = "playwright", specifier = ">=1.63.0" },
     { name = "pre-commit", specifier = ">=4.6.2" },
     { name = "ruff" },
 ]

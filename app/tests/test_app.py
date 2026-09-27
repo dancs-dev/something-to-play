@@ -426,7 +426,7 @@ class AppTests(TestCase):
         page = self.client.get(reverse("run", args=[run.pk]))
         self.assertContains(page, "Your picks")
         self.assertContains(page, "Favourites to revisit")
-        self.assertContains(page, "Games you haven’t played yet")
+        self.assertContains(page, "Games you haven't played yet")
         self.assertContains(page, "Games you might like")
         home = self.client.get(reverse("home"))
         self.assertContains(home, "Latest picks")

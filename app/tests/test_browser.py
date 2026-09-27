@@ -1,7 +1,5 @@
-"""Optional: uv run --with playwright python manage.py test app.tests.test_browser."""
+"""Browser smoke test for the recommendation flow."""
 
-from importlib.util import find_spec
-from unittest import skipUnless
 from unittest.mock import patch
 
 from django.contrib.staticfiles.testing import StaticLiveServerTestCase
@@ -10,9 +8,6 @@ from django.test import override_settings
 from app.tests.test_app import GAMES
 
 
-@skipUnless(
-    find_spec("playwright"), "Optional browser check: run with uv run --with playwright"
-)
 @override_settings(ALLOWED_HOSTS=["localhost", "testserver"])
 class BrowserSmoke(StaticLiveServerTestCase):
     def test_taste_to_direct_ai_request_and_feedback(self) -> None:
@@ -53,7 +48,7 @@ class BrowserSmoke(StaticLiveServerTestCase):
             page.get_by_role("link", name="Find a game").click()
             page.get_by_label("Game title").fill("Portal 2")
             page.get_by_role("button", name="Search games").click()
-            page.get_by_role("link", name="Add “Portal 2” yourself").click()
+            page.get_by_role("link", name='Add "Portal 2" yourself').click()
             page.get_by_label("Game:", exact=True).fill("Portal 2")
             page.get_by_label("How did you feel about it?", exact=False).select_option(
                 "1"
@@ -96,7 +91,7 @@ class BrowserSmoke(StaticLiveServerTestCase):
                 path="/tmp/game-recommender-simple-mobile.png", full_page=True
             )
             page.get_by_role("link", name="Disliked it", exact=True).click()
-            page.get_by_role("link", name="Add “The Talos Principle” yourself").click()
+            page.get_by_role("link", name='Add "The Talos Principle" yourself').click()
             self.assertEqual(
                 page.get_by_label("Game:", exact=True).input_value(),
                 "The Talos Principle",
