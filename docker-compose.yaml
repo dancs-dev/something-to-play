@@ -1,0 +1,18 @@
+services:
+  web:
+    build: .
+    env_file: .env
+    environment:
+      DJANGO_DEBUG: "0"
+      DJANGO_HTTPS: ${DJANGO_HTTPS:-0}
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Set DJANGO_SECRET_KEY in .env}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - data:/data
+    restart: unless-stopped
+
+volumes:
+  data:

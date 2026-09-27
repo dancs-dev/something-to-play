@@ -2,6 +2,8 @@
 
 I built Something to Play to answer a familiar question: which game in my library should I play next? It keeps your ratings and reasons, then uses an OpenAI-compatible model to suggest games with a reason to try each one and a possible drawback. Steam integration can sync your owned games.
 
+This is intended for self-hosting by one person or a small group of trusted users. Sign-up is open to anyone who can reach the site, so restrict access at the network or reverse proxy if you host it beyond localhost.
+
 ![Game suggestions after rating a game](docs/demo-home.png)
 
 ## Installation
@@ -23,6 +25,22 @@ To use another OpenAI-compatible Chat Completions provider, copy `.env.example` 
 ### Optional Steam integration
 
 Set `STEAM_WEB_API_KEY` in `.env` to enable Steam profile lookup, library sync, or catalogue search. Keep provider and Steam keys on the server. The app sends your saved ratings and recommendation request to the configured AI provider.
+
+### Docker Compose
+
+Copy `.env.example` to `.env`, set a unique `DJANGO_SECRET_KEY` (for example, generate one with `python3 -c 'import secrets; print(secrets.token_urlsafe(50))'`), and set `OPENAI_COMPATIBLE_BASE_URL=http://host.docker.internal:11434/v1`. Compose connects to your existing Ollama without another Ollama image or model download. The app is available only at <http://localhost:8000>; its SQLite database lives in a named volume, and migrations run when the container starts.
+
+On Linux, Ollama must listen on an address the container can reach: its default `127.0.0.1:11434` bind is insufficient. Set `OLLAMA_HOST=0.0.0.0:11434` for the host Ollama service and restrict port 11434 with your firewall if the host is reachable from other machines.
+
+With rootless Docker on Linux, `host-gateway` can point inside Docker's network namespace instead of reaching the host. If the connection fails, set `OPENAI_COMPATIBLE_BASE_URL=http://<host-LAN-IP>:11434/v1` in `.env`.
+
+```bash
+docker compose up --build -d
+```
+
+If you use another provider, set its URL and credentials in `.env` before starting Compose.
+
+For a trusted HTTPS reverse proxy, also set `DJANGO_ALLOWED_HOSTS` to your hostname and `DJANGO_HTTPS=1` and `DJANGO_TRUST_PROXY_HEADERS=1` in `.env`. The proxy must overwrite `X-Forwarded-Proto`; keep the app port bound to localhost and restrict access at the proxy.
 
 ## Development
 
