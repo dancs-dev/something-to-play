@@ -61,7 +61,17 @@ button:disabled { opacity: .6; cursor: wait; }
 .preference { border-bottom: 1px solid var(--border); padding: 12px 0 24px; overflow-wrap: anywhere; }
 .library-heading { display: flex; justify-content: space-between; align-items: start; gap: 24px; flex-wrap: wrap; }
 .library-heading form { margin: 0; }
-.library-item:last-child { border-bottom: 0; }
+.library-heading form + .muted { display: block; margin-top: -4px; }
+.library-heading h2 { margin-bottom: 4px; }
+.library-heading p { margin: 4px 0 0; }
+.library-heading + .library-item, .library-description + .library-item { border-top: 1px solid var(--border); padding-top: 8px; }
+.library-heading + .library-item { margin-top: 10px; }
+.library-section > h2 { margin-bottom: 4px; }
+.library-description { margin: 4px 0 10px; }
+.library-item { padding: 8px 0 12px; }
+.library-item h3 { font-size: 22px; margin: 2px 0 4px; }
+.library-item p { margin: 4px 0 8px; }
+.library-item .actions { gap: 14px; }
 .actions { gap: 20px; font-size: 13px; }
 .card { border-top: 2px solid var(--text); overflow-wrap: anywhere; }
 .card > p { font-size: 14px; }
