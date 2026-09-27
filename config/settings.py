@@ -135,7 +135,10 @@ SECURE_SSL_REDIRECT = not DEBUG
 SECURE_HSTS_SECONDS = 31536000 if not DEBUG else 0
 SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG
 SECURE_HSTS_PRELOAD = not DEBUG
-# Local Ollama works with a plain `uv run python manage.py runserver`.
-OLLAMA_BASE_URL = os.getenv('OLLAMA_BASE_URL', 'http://localhost:11434/v1').strip()
-OLLAMA_MODEL = os.getenv('OLLAMA_MODEL', 'qwen3.5:latest')
+# OpenAI-compatible provider. The local Ollama endpoint is the no-key default.
+OPENAI_COMPATIBLE_BASE_URL = os.getenv('OPENAI_COMPATIBLE_BASE_URL', 'http://localhost:11434/v1').strip()
+OPENAI_COMPATIBLE_MODEL = os.getenv('OPENAI_COMPATIBLE_MODEL', 'qwen3.5:latest').strip()
+OPENAI_COMPATIBLE_API_KEY = os.getenv('OPENAI_COMPATIBLE_API_KEY', '').strip()
+OPENAI_COMPATIBLE_REASONING_EFFORT = os.getenv('OPENAI_COMPATIBLE_REASONING_EFFORT', '').strip()
+OPENAI_COMPATIBLE_MAX_TOKENS = int(os.getenv('OPENAI_COMPATIBLE_MAX_TOKENS', '5000'))
 DATA_UPLOAD_MAX_MEMORY_SIZE = 128 * 1024

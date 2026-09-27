@@ -1,4 +1,4 @@
-"""Send the user's saved taste directly to Ollama and save its suggestions."""
+"""Send the user's saved taste to an OpenAI-compatible provider."""
 import json
 
 import httpx
@@ -34,26 +34,36 @@ class Suggestions(BaseModel):
     games: list[Suggestion] = Field(min_length=1, max_length=6)
 
 
-def ask_ollama(taste, context='', *, transport=None):
+def ask_provider(taste, context='', *, transport=None):
     try:
-        with httpx.Client(timeout=httpx.Timeout(90, connect=5), transport=transport) as client:
-            response = client.post(settings.OLLAMA_BASE_URL.rstrip('/') + '/chat/completions', json={
-                'model': settings.OLLAMA_MODEL,
+        with httpx.Client(timeout=httpx.Timeout(90, connect=30), transport=transport) as client:
+            headers = {'Authorization': f'Bearer {settings.OPENAI_COMPATIBLE_API_KEY}'} if settings.OPENAI_COMPATIBLE_API_KEY else {}
+            payload = {
+                'model': settings.OPENAI_COMPATIBLE_MODEL,
                 'messages': [{'role': 'system', 'content': PROMPT},
                              {'role': 'user', 'content': json.dumps({'taste': taste, 'request': context})}],
                 'response_format': {'type': 'json_object'},
-                'temperature': 0.5, 'reasoning_effort': 'none', 'max_tokens': 2500,
-            })
+                'temperature': 0.5, 'max_tokens': settings.OPENAI_COMPATIBLE_MAX_TOKENS,
+            }
+            if settings.OPENAI_COMPATIBLE_REASONING_EFFORT:
+                payload['reasoning_effort'] = settings.OPENAI_COMPATIBLE_REASONING_EFFORT
+            response = client.post(settings.OPENAI_COMPATIBLE_BASE_URL.rstrip('/') + '/chat/completions', headers=headers, json=payload)
             response.raise_for_status()
         choice = response.json()['choices'][0]
-        if choice['finish_reason'] != 'stop' or choice['message'].get('refusal'):
-            raise RecommendationError('Ollama did not finish its answer. Please try again.')
+        finish_reason = choice['finish_reason']
+        if choice['message'].get('refusal'):
+            raise RecommendationError('The AI provider refused to answer. Please try a different request.')
         # JSON mode avoids local grammar limitations. Full bounds/types are still checked here.
-        parsed = Suggestions.model_validate_json(choice['message']['content'])
+        try:
+            parsed = Suggestions.model_validate_json(choice['message']['content'])
+        except (ValidationError, ValueError) as exc:
+            if finish_reason == 'length':
+                raise RecommendationError('The AI provider reached its output limit. Please try again.') from exc
+            raise
     except httpx.HTTPError as exc:
-        raise RecommendationError('Could not get an answer from Ollama. Check that it is running, then try again.') from exc
+        raise RecommendationError('Could not get an answer from the AI provider. Check its settings, then try again.') from exc
     except (ValidationError, ValueError, KeyError, IndexError, TypeError, AttributeError) as exc:
-        raise RecommendationError('Ollama returned an unusable answer. Please try again.') from exc
+        raise RecommendationError('The AI provider returned an unusable answer. Please try again.') from exc
     seen = {entry['game'].strip().casefold() for entry in taste}
     games = []
     for suggestion in parsed.games:
@@ -62,7 +72,7 @@ def ask_ollama(taste, context='', *, transport=None):
             games.append(suggestion.model_dump() | {'title': title})
             seen.add(title.casefold())
     if not games:
-        raise RecommendationError('Ollama only suggested games already on your list. Please try again.')
+        raise RecommendationError('The AI provider only suggested games already on your list. Please try again.')
     return games
 
 
@@ -70,7 +80,7 @@ def create_run(user, context=''):
     taste = [{'game': p.subject, 'feeling': p.get_sentiment_display().lower(), 'reason': p.reason}
              for p in Preference.objects.filter(user=user)]
     if not taste:
-        raise RecommendationError('Add a game you like or dislike first, so Ollama has something to work with.')
-    results = ask_ollama(taste, context)
+        raise RecommendationError('Add a game you like or dislike first, so the AI has something to work with.')
+    results = ask_provider(taste, context)
     return RecommendationRun.objects.create(user=user, inputs={
-        'taste': taste, 'request': context, 'model': settings.OLLAMA_MODEL, 'prompt_version': PROMPT_VERSION}, results=results)
+        'taste': taste, 'request': context, 'model': settings.OPENAI_COMPATIBLE_MODEL, 'prompt_version': PROMPT_VERSION}, results=results)

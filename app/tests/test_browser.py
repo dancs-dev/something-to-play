@@ -14,13 +14,19 @@ from app.tests.test_app import GAMES
 class BrowserSmoke(StaticLiveServerTestCase):
     def test_taste_to_direct_ai_request_and_feedback(self):
         from playwright.sync_api import sync_playwright
-        with sync_playwright() as playwright, patch('app.recommendations.ask_ollama', return_value=GAMES) as ask:
+        with sync_playwright() as playwright, patch('app.recommendations.ask_provider', return_value=GAMES) as ask:
             browser = playwright.chromium.launch()
             page = browser.new_page(viewport={'width': 1280, 'height': 900})
             errors = []
             page.on('pageerror', lambda error: errors.append(str(error)))
             page.goto(self.live_server_url)
+            page.screenshot(path='/tmp/game-recommender-landing-desktop.png', full_page=True)
+            page.set_viewport_size({'width': 390, 'height': 844})
+            self.assertTrue(page.evaluate('document.documentElement.scrollWidth <= window.innerWidth'))
+            page.screenshot(path='/tmp/game-recommender-landing-mobile.png', full_page=True)
             page.get_by_role('link', name='Get started', exact=True).first.click()
+            self.assertTrue(page.evaluate('document.documentElement.scrollWidth <= window.innerWidth'))
+            page.set_viewport_size({'width': 1280, 'height': 900})
             page.get_by_label('Username').fill('browser-player')
             page.get_by_label('Password:', exact=True).fill('browser-smoke-password-82')
             page.get_by_label('Password confirmation').fill('browser-smoke-password-82')
@@ -32,7 +38,7 @@ class BrowserSmoke(StaticLiveServerTestCase):
             page.locator('.preference h3').wait_for()
             page.get_by_label('Anything you want this time?', exact=False).fill('Something relaxing')
             with page.expect_response(lambda response: response.url.endswith('/recommend/')) as submitted:
-                page.get_by_role('button', name='Ask Ollama for recommendations').click()
+                page.get_by_role('button', name='Find my next game').click()
             self.assertEqual(submitted.value.status, 200, submitted.value.text()[:1000])
             self.assertIn('The Talos Principle', submitted.value.text())
             self.assertEqual(errors, [])

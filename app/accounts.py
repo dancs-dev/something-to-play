@@ -1,15 +1,20 @@
 from django.contrib.auth import login
 from django.contrib.auth.forms import UserCreationForm
-from django.shortcuts import redirect, render
-from django.views.decorators.http import require_http_methods
+from django.shortcuts import redirect
+from django.urls import reverse_lazy
+from django.views.generic import FormView
 
 
-@require_http_methods(['GET', 'POST'])
-def signup(request):
-    if request.user.is_authenticated:
-        return redirect('home')
-    form = UserCreationForm(request.POST or None)
-    if request.method == 'POST' and form.is_valid():
-        login(request, form.save())
-        return redirect('onboarding')
-    return render(request, 'registration/signup.html', {'form': form})
+class SignupView(FormView):
+    form_class = UserCreationForm
+    template_name = 'registration/signup.html'
+    success_url = reverse_lazy('onboarding')
+
+    def dispatch(self, request, *args, **kwargs):
+        if request.user.is_authenticated:
+            return redirect('home')
+        return super().dispatch(request, *args, **kwargs)
+
+    def form_valid(self, form):
+        login(self.request, form.save())
+        return super().form_valid(form)

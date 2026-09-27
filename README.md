@@ -1,10 +1,10 @@
 # Next Play
 
-Save games you like or dislike, explain why, and ask local Ollama what to play next.
+Save games you like or dislike, explain why, and get personal recommendations from an OpenAI-compatible AI provider.
 
 ## Run
 
-With [uv](https://docs.astral.sh/uv/) installed and Ollama running locally:
+With [uv](https://docs.astral.sh/uv/) installed and either local Ollama running or an AI provider configured:
 
 ```bash
 uv sync --locked
@@ -12,9 +12,11 @@ uv run python manage.py migrate
 uv run python manage.py runserver
 ```
 
-Open <http://localhost:8000>, create an account, add games and reasons, then click **Ask Ollama for recommendations**. That request calls Ollama immediately and returns its suggestions. There is no worker, import job, scoring pipeline or seeded catalogue.
+Open <http://localhost:8000>, create an account, add games and reasons, then click **Find my next game**. That request calls the configured provider immediately and returns its suggestions. There is no worker, import job, scoring pipeline or seeded catalogue.
 
-The defaults are `http://localhost:11434/v1` and `qwen3.5:latest`, matching the local instance used during development. No API key is needed. To use a different installed model or endpoint, set `OLLAMA_MODEL` / `OLLAMA_BASE_URL` in the environment, or in `.env` and run:
+The defaults are `http://localhost:11434/v1` and `qwen3.5:latest`, so a local Ollama instance works without a key. To use another OpenAI-compatible Chat Completions provider, set `OPENAI_COMPATIBLE_BASE_URL`, `OPENAI_COMPATIBLE_MODEL`, and, when required, `OPENAI_COMPATIBLE_API_KEY` in the environment or `.env`. For example, use `https://api.openai.com/v1` for OpenAI or `https://openrouter.ai/api/v1` for OpenRouter, and set the model ID supported by that provider. The endpoint and selected model must support Chat Completions with JSON mode.
+
+Keep provider keys server-side; do not put them in templates or browser code. The recommendation request sends the user's saved game preferences and optional request to the configured provider. To load `.env`, run:
 
 ```bash
 uv run --env-file .env python manage.py runserver
@@ -26,9 +28,9 @@ The ordinary command works without `.env`. `uv` maintains `pyproject.toml` and t
 
 There are two application models: `Preference` (user, game name, like/dislike, reason) and `RecommendationRun` (user, saved input and AI response).
 
-The app sends that user's complete taste list and an optional current request directly to Ollama. The model returns game titles, personal rationales and potential drawbacks. JSON responses are validated; duplicate and already-listed games are removed. The app saves successful responses so users can revisit them. “Liked it” / “Disliked it” opens an editable taste entry so the user can add their reason.
+The app sends that user's complete taste list and an optional current request to the configured provider. The model returns game titles, personal rationales and potential drawbacks. JSON responses are validated; duplicate and already-listed games are removed. The app saves successful responses so users can revisit them. “Liked it” / “Disliked it” opens an editable taste entry so the user can add their reason.
 
-Ollama uses its knowledge. These are AI suggestions, not verified catalogue facts; there is no web search or Steam connection. A model/network error is displayed honestly with a retry path rather than replaced by unrelated picks. The request has a 90-second timeout. Nothing is sent to a hosted AI provider.
+The configured model uses its knowledge. These are AI suggestions, not verified catalogue facts; there is no web search or Steam connection. A model/network error is displayed honestly with a retry path rather than replaced by unrelated picks. The request has a 90-second timeout. With a hosted provider, the user's taste and request are sent to that provider.
 
 Accounts use Django authentication and CSRF protection. Queries are scoped to the signed-in user. SQLite writes occur after the model request, with no transaction held during inference.
 

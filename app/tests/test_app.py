@@ -7,7 +7,7 @@ from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 
 from app.models import Preference, RecommendationRun
-from app.recommendations import RecommendationError, ask_ollama
+from app.recommendations import RecommendationError, ask_provider
 
 GAMES = [{'title': 'The Talos Principle', 'rationale': 'Its puzzle solving fits your reasons for liking Portal 2.',
           'drawback': 'The philosophical story may be slower than you want.'}]
@@ -44,9 +44,9 @@ class AppTests(TestCase):
         self.assertEqual(self.preference.sentiment, -1)
         self.assertEqual(self.preference.reason, 'Changed my mind')
 
-    def test_recommendation_calls_ollama_in_request_with_only_own_taste(self):
+    def test_recommendation_calls_provider_in_request_with_only_own_taste(self):
         Preference.objects.create(user=self.other, subject='Private game', sentiment=-1, reason='Private reason')
-        with patch('app.recommendations.ask_ollama', return_value=GAMES) as ask:
+        with patch('app.recommendations.ask_provider', return_value=GAMES) as ask:
             response = self.client.post(reverse('recommend'), {'context': 'Something relaxing'}, HTTP_HX_REQUEST='true')
         ask.assert_called_once_with([{'game': 'Portal 2', 'feeling': 'like', 'reason': 'Clever puzzles'}], 'Something relaxing')
         self.assertContains(response, 'The Talos Principle')
@@ -58,23 +58,23 @@ class AppTests(TestCase):
         self.assertEqual(run.inputs['request'], 'Something relaxing')
 
     def test_normal_form_post_also_calls_ai(self):
-        with patch('app.recommendations.ask_ollama', return_value=GAMES) as ask:
+        with patch('app.recommendations.ask_provider', return_value=GAMES) as ask:
             response = self.client.post(reverse('recommend'), {})
         self.assertRedirects(response, reverse('run', args=[RecommendationRun.objects.get().pk]))
         ask.assert_called_once()
 
     def test_no_saved_taste_does_not_call_model(self):
         self.client.force_login(self.other)
-        with patch('app.recommendations.ask_ollama') as ask:
+        with patch('app.recommendations.ask_provider') as ask:
             response = self.client.post(reverse('recommend'), {}, HTTP_HX_REQUEST='true')
         self.assertContains(response, 'Add a game you like or dislike first')
         ask.assert_not_called()
 
     def test_failure_shows_error_without_fake_recommendations_or_queued_run(self):
         for htmx in (False, True):
-            with self.subTest(htmx=htmx), patch('app.recommendations.ask_ollama', side_effect=RecommendationError('Ollama is unavailable')):
+            with self.subTest(htmx=htmx), patch('app.recommendations.ask_provider', side_effect=RecommendationError('AI provider is unavailable')):
                 response = self.client.post(reverse('recommend'), {'context': 'Puzzle games'}, HTTP_HX_REQUEST='true' if htmx else 'false')
-                self.assertContains(response, 'Ollama is unavailable')
+                self.assertContains(response, 'AI provider is unavailable')
         self.assertFalse(RecommendationRun.objects.exists())
         self.assertTrue(Preference.objects.filter(pk=self.preference.pk).exists())
 
@@ -94,7 +94,7 @@ class AppTests(TestCase):
         self.assertEqual(Preference.objects.count(), 2)  # Prefill waits for the user's reason and save.
 
     def test_invalid_input_and_csrf(self):
-        with patch('app.recommendations.ask_ollama') as ask:
+        with patch('app.recommendations.ask_provider') as ask:
             response = self.client.post(reverse('recommend'), {'context': 'x' * 1001}, HTTP_HX_REQUEST='true')
         self.assertContains(response, 'under 1,000 characters')
         ask.assert_not_called()
@@ -107,12 +107,12 @@ class AppTests(TestCase):
 
     def test_ai_text_is_escaped(self):
         games = [GAMES[0] | {'title': '<script>alert(1)</script>'}]
-        with patch('app.recommendations.ask_ollama', return_value=games):
+        with patch('app.recommendations.ask_provider', return_value=games):
             response = self.client.post(reverse('recommend'), {}, HTTP_HX_REQUEST='true')
         self.assertNotContains(response, '<script>alert(1)</script>')
         self.assertContains(response, '&lt;script&gt;')
 
-    def test_real_http_adapter_uses_local_model_without_key_or_tools(self):
+    def test_openai_compatible_adapter_uses_configured_endpoint(self):
         def respond(request):
             self.assertEqual(str(request.url), 'http://localhost:11434/v1/chat/completions')
             self.assertNotIn('authorization', request.headers)
@@ -120,11 +120,13 @@ class AppTests(TestCase):
             self.assertEqual(payload['model'], 'qwen3.5:latest')
             self.assertNotIn('tools', payload)
             self.assertEqual(payload['response_format'], {'type': 'json_object'})
+            self.assertEqual(payload['reasoning_effort'], 'none')
+            self.assertEqual(payload['max_tokens'], 1234)
             self.assertIn('Clever puzzles', payload['messages'][1]['content'])
             return httpx.Response(200, json={'choices': [{'finish_reason': 'stop', 'message': {'content': json.dumps({'games': GAMES})}}]})
         taste = [{'game': 'Portal 2', 'feeling': 'like', 'reason': 'Clever puzzles'}]
-        with override_settings(OLLAMA_BASE_URL='http://localhost:11434/v1', OLLAMA_MODEL='qwen3.5:latest'):
-            self.assertEqual(ask_ollama(taste, transport=httpx.MockTransport(respond)), GAMES)
+        with override_settings(OPENAI_COMPATIBLE_BASE_URL='http://localhost:11434/v1', OPENAI_COMPATIBLE_MODEL='qwen3.5:latest', OPENAI_COMPATIBLE_REASONING_EFFORT='none', OPENAI_COMPATIBLE_MAX_TOKENS=1234):
+            self.assertEqual(ask_provider(taste, transport=httpx.MockTransport(respond)), GAMES)
 
     def test_adapter_rejects_invalid_truncated_and_overlong_output(self):
         bodies = [{}, {'choices': []}, {'choices': [{'finish_reason': 'length'}]},
@@ -132,16 +134,16 @@ class AppTests(TestCase):
                   {'choices': [{'finish_reason': 'stop', 'message': {'content': json.dumps({'games': [GAMES[0] | {'title': 'x' * 201}]})}}]}]
         for body in bodies:
             with self.subTest(body=body), self.assertRaises(RecommendationError):
-                ask_ollama([], transport=httpx.MockTransport(lambda request: httpx.Response(200, json=body)))
+                ask_provider([], transport=httpx.MockTransport(lambda request: httpx.Response(200, json=body)))
         with self.assertRaises(RecommendationError):
-            ask_ollama([], transport=httpx.MockTransport(lambda request: httpx.Response(503)))
+            ask_provider([], transport=httpx.MockTransport(lambda request: httpx.Response(503)))
         def timeout(request):
             raise httpx.ReadTimeout('timed out')
         with self.assertRaises(RecommendationError):
-            ask_ollama([], transport=httpx.MockTransport(timeout))
+            ask_provider([], transport=httpx.MockTransport(timeout))
 
     def test_adapter_omits_duplicates_and_already_known_games(self):
         games = [GAMES[0], GAMES[0], GAMES[0] | {'title': 'Portal 2'}]
         response = {'choices': [{'finish_reason': 'stop', 'message': {'content': json.dumps({'games': games})}}]}
-        result = ask_ollama([{'game': 'portal 2'}], transport=httpx.MockTransport(lambda request: httpx.Response(200, json=response)))
+        result = ask_provider([{'game': 'portal 2'}], transport=httpx.MockTransport(lambda request: httpx.Response(200, json=response)))
         self.assertEqual(result, GAMES)

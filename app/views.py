@@ -1,98 +1,149 @@
-from django.contrib.auth.decorators import login_required
+from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db import transaction
+from django.http import HttpResponseRedirect
 from django.shortcuts import get_object_or_404, redirect, render
-from django.views.decorators.http import require_GET, require_POST, require_http_methods
+from django.urls import reverse_lazy
+from django.views.generic import CreateView, DeleteView, DetailView, FormView, TemplateView, UpdateView
 
 from .forms import PreferenceForm, RecommendationForm
 from .models import Preference, RecommendationRun
 from .recommendations import RecommendationError, create_run
 
 
-def home_context(user):
-    return {'preferences': Preference.objects.filter(user=user), 'preference_form': PreferenceForm(),
-            'recommendation_form': RecommendationForm(),
-            'run': RecommendationRun.objects.filter(user=user).order_by('-created_at').first()}
+class HomeView(TemplateView):
+    template_name = 'app/home.html'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        if self.request.user.is_authenticated:
+            context.update(
+                preferences=Preference.objects.filter(user=self.request.user),
+                preference_form=PreferenceForm(),
+                recommendation_form=RecommendationForm(),
+                run=RecommendationRun.objects.filter(user=self.request.user).order_by('-created_at').first(),
+            )
+        return context
 
 
-@require_GET
-def home(request):
-    context = home_context(request.user) if request.user.is_authenticated else {}
-    return render(request, 'app/home.html', context)
-
-
-@login_required
-@require_GET
-def profile(request):
-    return redirect('home')
-
-
-@login_required
-@require_http_methods(['GET', 'POST'])
-def preference(request, pk=None):
-    instance = get_object_or_404(Preference, pk=pk, user=request.user) if pk else None
-    initial = {}
-    if request.method == 'GET' and request.GET.get('run'):
-        try:
-            run_id = int(request.GET['run'])
-        except ValueError:
-            return redirect('home')
-        run = get_object_or_404(RecommendationRun, pk=run_id, user=request.user)
-        try:
-            index = int(request.GET.get('index', '-1'))
-            if index < 0:
-                raise IndexError
-            initial = {'subject': run.results[index]['title'],
-                       'sentiment': -1 if request.GET.get('feeling') == 'dislike' else 1}
-        except (ValueError, IndexError, KeyError):
-            return redirect('home')
-    form = PreferenceForm(request.POST if request.method == 'POST' else None, instance=instance, initial=initial)
-    if request.method == 'POST' and form.is_valid():
-        with transaction.atomic():
-            existing = Preference.objects.filter(user=request.user, subject__iexact=form.cleaned_data['subject']).first()
-            saved = existing or instance or Preference(user=request.user)
-            for key, value in form.cleaned_data.items():
-                setattr(saved, key, value)
-            saved.save()
-            if instance and instance.pk != saved.pk:
-                instance.delete()
+class ProfileView(LoginRequiredMixin, TemplateView):
+    def get(self, request, *args, **kwargs):
         return redirect('home')
-    return render(request, 'app/preference.html', {'form': form, 'preference': instance})
 
 
-@login_required
-@require_POST
-def delete_preference(request, pk):
-    get_object_or_404(Preference, pk=pk, user=request.user).delete()
-    return redirect('home')
+class PreferenceFormMixin(LoginRequiredMixin):
+    http_method_names = ['get', 'post', 'head', 'options']
+    model = Preference
+    form_class = PreferenceForm
+    template_name = 'app/preference.html'
+    success_url = reverse_lazy('home')
+
+    def get_queryset(self):
+        return Preference.objects.filter(user=self.request.user)
+
+    def get(self, request, *args, **kwargs):
+        self.prefill = {}
+        if request.GET.get('run'):
+            try:
+                run_id = int(request.GET['run'])
+            except ValueError:
+                return redirect('home')
+            run = get_object_or_404(RecommendationRun, pk=run_id, user=request.user)
+            try:
+                index = int(request.GET.get('index', '-1'))
+                if index < 0:
+                    raise IndexError
+                self.prefill = {
+                    'subject': run.results[index]['title'],
+                    'sentiment': -1 if request.GET.get('feeling') == 'dislike' else 1,
+                }
+            except (ValueError, IndexError, KeyError):
+                return redirect('home')
+        return super().get(request, *args, **kwargs)
+
+    def get_initial(self):
+        return super().get_initial() | getattr(self, 'prefill', {})
+
+    def get_context_data(self, **kwargs):
+        return super().get_context_data(preference=self.object, **kwargs)
+
+    def form_valid(self, form):
+        form.instance.user = self.request.user
+        with transaction.atomic():
+            existing = self.get_queryset().filter(subject__iexact=form.cleaned_data['subject']).first()
+            if existing and existing != self.object:
+                for key, value in form.cleaned_data.items():
+                    setattr(existing, key, value)
+                existing.save()
+                if self.object:
+                    self.object.delete()
+                self.object = existing
+            else:
+                self.object = form.save()
+        return HttpResponseRedirect(self.get_success_url())
 
 
-@login_required
-@require_POST
-def recommend(request):
-    form = RecommendationForm(request.POST)
-    result = {'run': None}
-    if form.is_valid():
+class PreferenceCreateView(PreferenceFormMixin, CreateView):
+    pass
+
+
+class PreferenceUpdateView(PreferenceFormMixin, UpdateView):
+    pass
+
+
+class PreferenceDeleteView(LoginRequiredMixin, DeleteView):
+    model = Preference
+    http_method_names = ['post']
+    success_url = reverse_lazy('home')
+
+    def get_queryset(self):
+        return Preference.objects.filter(user=self.request.user)
+
+
+class RecommendationView(LoginRequiredMixin, FormView):
+    http_method_names = ['post', 'options']
+    form_class = RecommendationForm
+    template_name = 'app/home.html'
+
+    def render_result(self, result, form=None):
+        if self.request.headers.get('HX-Request') == 'true':
+            return render(self.request, 'app/results.html', result)
+        context = {
+            'preferences': Preference.objects.filter(user=self.request.user),
+            'preference_form': PreferenceForm(),
+            'recommendation_form': form or RecommendationForm(),
+            'run': RecommendationRun.objects.filter(user=self.request.user).order_by('-created_at').first(),
+            **result,
+        }
+        return render(self.request, self.template_name, context)
+
+    def form_valid(self, form):
         try:
-            result['run'] = create_run(request.user, form.cleaned_data['context'])
+            run = create_run(self.request.user, form.cleaned_data['context'])
         except RecommendationError as exc:
-            result['error'] = str(exc)
-    else:
-        result['error'] = 'Please keep your current request under 1,000 characters.'
-    if request.headers.get('HX-Request') == 'true':
-        return render(request, 'app/results.html', result)
-    if result['run']:
-        return redirect('run', pk=result['run'].pk)
-    return render(request, 'app/home.html', home_context(request.user) | result | {'recommendation_form': form})
+            return self.render_result({'run': None, 'error': str(exc)}, form)
+        if self.request.headers.get('HX-Request') == 'true':
+            return self.render_result({'run': run})
+        return redirect('run', pk=run.pk)
+
+    def form_invalid(self, form):
+        return self.render_result(
+            {'run': None, 'error': 'Please keep your current request under 1,000 characters.'}, form
+        )
 
 
-@login_required
-@require_GET
-def run_detail(request, pk):
-    run = get_object_or_404(RecommendationRun, pk=pk, user=request.user)
-    return render(request, 'app/run.html', {'run': run})
+class RunDetailView(LoginRequiredMixin, DetailView):
+    model = RecommendationRun
+    context_object_name = 'run'
+    template_name = 'app/run.html'
+
+    def get_queryset(self):
+        return RecommendationRun.objects.filter(user=self.request.user)
 
 
-@login_required
-@require_GET
-def history(request):
-    return render(request, 'app/history.html', {'runs': RecommendationRun.objects.filter(user=request.user).order_by('-created_at')[:50]})
+class HistoryView(LoginRequiredMixin, TemplateView):
+    template_name = 'app/history.html'
+
+    def get_context_data(self, **kwargs):
+        return super().get_context_data(
+            runs=RecommendationRun.objects.filter(user=self.request.user).order_by('-created_at')[:50], **kwargs
+        )
