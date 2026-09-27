@@ -6,7 +6,7 @@
   <p class="lead">Good recommendations start with your taste. Save a few games and tell us what stayed with you.</p>
   <div class="grid two">
     <section class="panel taste-panel">
-      <h2><span class="section-number">01</span>Your taste</h2>
+      <h2><span class="section-number">01</span>Recently rated</h2>
       {% for pref in preferences %}
         <article class="preference">
           <span class="badge">{{ pref.get_sentiment_display }}</span>
@@ -20,12 +20,13 @@
       {% empty %}
         <div class="empty-state"><span class="eyebrow">A clean slate</span><h3>Every player has a type.</h3><p>Add a game you love—or one that didn’t work for you. A few honest words make all the difference.</p></div>
       {% endfor %}
+      <p><a href="{% url 'library' %}">See your full library</a></p>
     </section>
     <section class="panel">
       <h2><span class="section-number">02</span>Add a game</h2>
       <p>Find a game by title, or save one that is not on Steam.</p>
       <a class="button" href="{% url 'game_search' %}">Find a game</a>
-      <p><a href="{% url 'library' %}">Import your Steam library</a></p>
+      {% if not steam_connected %}<p><a href="{% url 'settings' %}">Import your Steam library</a></p>{% endif %}
     </section>
   </div>
   <section class="panel request-panel">

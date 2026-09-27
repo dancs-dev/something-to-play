@@ -17,6 +17,7 @@ urlpatterns = [
     path('games/search/', views.GameSearchView.as_view(), name='game_search'),
     path('games/catalogue/refresh/', views.CatalogueRefreshView.as_view(), name='catalogue_refresh'),
     path('library/', views.LibraryView.as_view(), name='library'),
+    path('settings/', views.SettingsView.as_view(), name='settings'),
     path('library/link/', views.SteamLinkView.as_view(), name='steam_link'),
     path('library/sync/', views.SteamSyncView.as_view(), name='steam_sync'),
     path('library/games/<int:game_id>/curate/', views.LibraryCurationView.as_view(), name='library_curate'),

@@ -6,6 +6,7 @@
   <title>{% block title %}Next Play · Find your next game{% endblock %}</title>
   <link rel="stylesheet" href="{% static 'app/style.css' %}">
   <script src="{% static 'app/htmx.min.js' %}" defer></script>
+  <script src="{% static 'app/local-time.js' %}" defer></script>
 </head>
 <body>
   <a class="skip" href="#main">Skip to content</a>
@@ -13,9 +14,10 @@
     <a class="brand" href="{% url 'home' %}"><span class="brand-mark" aria-hidden="true">↗</span> Next Play</a>
     <nav aria-label="Main navigation">
       {% if user.is_authenticated %}
-        <a href="{% url 'home' %}"{% if request.resolver_match.url_name == 'home' %} aria-current="page"{% endif %}>Your taste</a>
+        <a href="{% url 'home' %}"{% if request.resolver_match.url_name == 'home' %} aria-current="page"{% endif %}>Home</a>
         <a href="{% url 'library' %}"{% if request.resolver_match.url_name == 'library' %} aria-current="page"{% endif %}>Library</a>
         <a href="{% url 'history' %}"{% if request.resolver_match.url_name == 'history' %} aria-current="page"{% endif %}>Past picks</a>
+        <a href="{% url 'settings' %}"{% if request.resolver_match.url_name == 'settings' %} aria-current="page"{% endif %}>Settings</a>
         <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="quiet">Log out</button></form>
       {% else %}
         <a href="{% url 'login' %}">Log in</a>

@@ -1,9 +1,12 @@
+from datetime import timedelta
+
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db import transaction
 from django.http import HttpResponseRedirect
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse_lazy
+from django.utils import timezone
 from django.views.generic import CreateView, DeleteView, DetailView, FormView, TemplateView, UpdateView, View
 
 from .forms import GameSearchForm, PreferenceForm, RecommendationForm, SteamLinkForm
@@ -22,14 +25,6 @@ def find_game(title, game_id=None):
     game = Game.objects.filter(title__iexact=title).first()
     if game:
         return game
-    if not CatalogueState.objects.filter(provider='steam').exists():
-        try:
-            refresh_catalogue()
-            game = Game.objects.filter(title__iexact=title).first()
-            if game:
-                return game
-        except SteamError:
-            pass  # Manual game entry remains available without Steam.
     return Game.objects.create(title=title)
 
 
@@ -40,7 +35,8 @@ class HomeView(TemplateView):
         context = super().get_context_data(**kwargs)
         if self.request.user.is_authenticated:
             context.update(
-                preferences=Preference.objects.filter(user=self.request.user).exclude(sentiment=0).select_related('game'),
+                preferences=Preference.objects.filter(user=self.request.user).exclude(sentiment=0).select_related('game')[:5],
+                steam_connected=LinkedAccount.objects.filter(user=self.request.user, provider='steam').exists(),
                 recommendation_form=RecommendationForm(),
                 run=RecommendationRun.objects.filter(user=self.request.user).order_by('-created_at').first(),
             )
@@ -58,6 +54,9 @@ class PreferenceFormMixin(LoginRequiredMixin):
     form_class = PreferenceForm
     template_name = 'app/preference.html'
     success_url = reverse_lazy('home')
+
+    def get_success_url(self):
+        return reverse_lazy('library') if self.request.GET.get('next') == 'library' else super().get_success_url()
 
     def get_queryset(self):
         return Preference.objects.filter(user=self.request.user)
@@ -134,6 +133,9 @@ class PreferenceDeleteView(LoginRequiredMixin, DeleteView):
     http_method_names = ['post']
     success_url = reverse_lazy('home')
 
+    def get_success_url(self):
+        return reverse_lazy('library') if self.request.GET.get('next') == 'library' else super().get_success_url()
+
     def get_queryset(self):
         return Preference.objects.filter(user=self.request.user)
 
@@ -147,7 +149,8 @@ class RecommendationView(LoginRequiredMixin, FormView):
         if self.request.headers.get('HX-Request') == 'true':
             return render(self.request, 'app/results.html', result)
         context = {
-            'preferences': Preference.objects.filter(user=self.request.user).exclude(sentiment=0).select_related('game'),
+            'preferences': Preference.objects.filter(user=self.request.user).exclude(sentiment=0).select_related('game')[:5],
+            'steam_connected': LinkedAccount.objects.filter(user=self.request.user, provider='steam').exists(),
             'recommendation_form': form or RecommendationForm(),
             'run': RecommendationRun.objects.filter(user=self.request.user).order_by('-created_at').first(),
             **result,
@@ -201,14 +204,13 @@ class GameSearchView(LoginRequiredMixin, TemplateView):
         context['feeling'] = self.request.POST.get('feeling', 'like')
         context['results'] = []
         if query:
-            context['results'] = list(Game.objects.filter(title__icontains=query).order_by('title')[:20])
-            if not context['results'] and not CatalogueState.objects.filter(provider='steam').exists():
-                try:
-                    refresh_catalogue()
-                    context['results'] = list(Game.objects.filter(title__icontains=query).order_by('title')[:20])
-                except SteamError as exc:
-                    context['error'] = str(exc)
-        context['catalogue'] = CatalogueState.objects.filter(provider='steam').first()
+            exact = Game.objects.filter(title__iexact=query).first()
+            context['exact_match'] = bool(exact)
+            matches = Game.objects.filter(title__icontains=query)
+            if exact:
+                context['results'] = [exact, *matches.exclude(pk=exact.pk).order_by('title')[:19]]
+            else:
+                context['results'] = list(matches.order_by('title')[:20])
         return context
 
 
@@ -221,7 +223,19 @@ class CatalogueRefreshView(LoginRequiredMixin, View):
             messages.success(request, 'Steam game catalogue refreshed.')
         except SteamError as exc:
             messages.error(request, str(exc))
-        return redirect('game_search')
+        return redirect('settings')
+
+
+class SettingsView(LoginRequiredMixin, TemplateView):
+    template_name = 'app/settings.html'
+
+    def get_context_data(self, **kwargs):
+        return super().get_context_data(
+            account=LinkedAccount.objects.filter(user=self.request.user, provider='steam').first(),
+            link_form=SteamLinkForm(),
+            catalogue=CatalogueState.objects.filter(provider='steam').first(),
+            **kwargs,
+        )
 
 
 class LibraryView(LoginRequiredMixin, TemplateView):
@@ -231,13 +245,16 @@ class LibraryView(LoginRequiredMixin, TemplateView):
         context = super().get_context_data(**kwargs)
         account = LinkedAccount.objects.filter(user=self.request.user, provider='steam').first()
         context['account'] = account
-        context['link_form'] = SteamLinkForm()
+        context['recently_synced'] = bool(account and account.last_synced_at and account.last_synced_at > timezone.now() - timedelta(days=1))
+        preferences = list(Preference.objects.filter(user=self.request.user).select_related('game'))
+        context['rated_sections'] = [
+            ('Liked', [pref for pref in preferences if pref.sentiment == 1]),
+            ('Disliked', [pref for pref in preferences if pref.sentiment == -1]),
+        ]
+        context['ignored'] = [pref for pref in preferences if pref.sentiment == 0]
         if account:
-            entries = list(Ownership.objects.filter(account=account).select_related('game').order_by('game__title'))
-            curation = {p.game_id: p for p in Preference.objects.filter(user=self.request.user, game_id__in=[e.game_id for e in entries])}
-            for entry in entries:
-                entry.curation = curation.get(entry.game_id)
-            context['entries'] = entries
+            rated_ids = {pref.game_id for pref in preferences}
+            context['unrated'] = [entry for entry in Ownership.objects.filter(account=account, is_active=True).select_related('game').order_by('game__title') if entry.game_id not in rated_ids]
         return context
 
 
@@ -255,12 +272,12 @@ class SteamLinkView(LoginRequiredMixin, View):
                     account.last_synced_at = None
                     account.save(update_fields=['external_user_id', 'last_synced_at'])
                     Ownership.objects.filter(account=account).update(is_active=False)
-                messages.success(request, 'Steam profile linked. Choose Sync library to import its visible games.')
+                messages.success(request, 'Steam profile linked. Sync your games from Library.')
             except SteamError as exc:
                 messages.error(request, str(exc))
         else:
             messages.error(request, 'Enter a Steam ID or profile URL.')
-        return redirect('library')
+        return redirect('settings')
 
 
 class SteamSyncView(LoginRequiredMixin, View):
@@ -288,6 +305,12 @@ class LibraryCurationView(LoginRequiredMixin, View):
         if sentiment not in {-1, 0, 1}:
             messages.error(request, 'Choose Like, Dislike, or Ignore.')
             return redirect('library')
+        if sentiment != 0:
+            preference = Preference.objects.filter(user=request.user, game_id=game_id).first()
+            feeling = 'like' if sentiment == 1 else 'dislike'
+            if preference:
+                return redirect(f"{reverse_lazy('preference_edit', kwargs={'pk': preference.pk})}?feeling={feeling}&next=library")
+            return redirect(f"{reverse_lazy('preference_new')}?game={game_id}&feeling={feeling}&next=library")
         with transaction.atomic():
             preference, _ = Preference.objects.get_or_create(user=request.user, game_id=game_id, defaults={'sentiment': sentiment})
             if preference.sentiment != sentiment:

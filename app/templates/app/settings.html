@@ -1,0 +1,15 @@
+{% extends 'app/base.html' %}
+{% block content %}
+<h1>Settings</h1>
+<section class="panel narrow">
+  <h2>Steam profile</h2>
+  <p>Enter a public Steam profile. Your game details must be visible for import.</p>
+  {% if account %}<p class="muted">Connected Steam ID: {{ account.external_user_id }}</p>{% endif %}
+  <form method="post" action="{% url 'steam_link' %}">{% csrf_token %}{{ link_form.as_p }}<button>{% if account %}Change profile{% else %}Link profile{% endif %}</button></form>
+</section>
+<section class="panel narrow">
+  <h2>Steam game catalogue</h2>
+  <p class="muted">Last refreshed: {% if catalogue %}<time datetime="{{ catalogue.last_synced_at|date:'c' }}" data-local-time>{{ catalogue.last_synced_at|date:'M j, Y H:i' }} UTC</time>{% else %}Never{% endif %}</p>
+  <form method="post" action="{% url 'catalogue_refresh' %}">{% csrf_token %}<button>Refresh Steam catalogue</button></form>
+</section>
+{% endblock %}

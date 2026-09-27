@@ -2,11 +2,12 @@
 {% block content %}
 <section class="panel narrow">
   <h1>{% if preference %}Edit{% else %}Add{% endif %} a game</h1>
+  {% if request.GET.feeling == 'like' %}<p>What did you like about it?</p>{% elif request.GET.feeling == 'dislike' %}<p>What didn't work for you?</p>{% endif %}
   <form method="post">
     {% csrf_token %}
     {{ form.as_p }}
     <button>Save game</button>
-    <a href="{% url 'home' %}">Cancel</a>
+    <a href="{% if request.GET.next == 'library' %}{% url 'library' %}{% else %}{% url 'home' %}{% endif %}">Cancel</a>
   </form>
 </section>
 {% endblock %}

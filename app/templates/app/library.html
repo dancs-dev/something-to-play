@@ -1,34 +1,46 @@
 {% extends 'app/base.html' %}
 {% block content %}
-<section class="panel">
-  <h1>Your Steam library</h1>
-  <p>Enter a public Steam profile. This link is unverified; your game details must be visible for import. Imported ownership does not count as liking a game.</p>
-  <form method="post" action="{% url 'steam_link' %}">
-    {% csrf_token %}{{ link_form.as_p }}<button>{% if account %}Change profile{% else %}Link profile{% endif %}</button>
-  </form>
-  {% if account %}
-    <p>Steam ID: {{ account.external_user_id }} · Last synced: {{ account.last_synced_at|default:'Never' }}</p>
-    <form method="post" action="{% url 'steam_sync' %}">{% csrf_token %}<button>Sync library</button></form>
-  {% endif %}
-</section>
+<p class="eyebrow">YOUR COLLECTION</p>
+<h1>Your library</h1>
+<p class="lead">Your Steam games and the games you have rated, all in one place.</p>
+<p><a href="{% url 'game_search' %}">Add a game</a>{% if not account %} · <a href="{% url 'settings' %}">Connect your Steam library</a>{% endif %}</p>
 {% if account %}
-<section class="panel">
-  <h2>Imported games</h2>
-  {% for entry in entries %}
-    <article class="preference">
-      <h3>{{ entry.game.title }}</h3>
-      <p>{% if entry.is_active %}Owned on Steam{% else %}No longer in the latest Steam library{% endif %} · {{ entry.curation.get_sentiment_display|default:'Needs review' }}</p>
-      <form method="post" action="{% url 'library_curate' entry.game_id %}">
-        {% csrf_token %}
-        <button name="sentiment" value="1">Like</button>
-        <button name="sentiment" value="-1">Dislike</button>
-        <button name="sentiment" value="0">Ignore</button>
-        {% if entry.curation and entry.curation.sentiment != 0 %}<a href="{% url 'preference_edit' entry.curation.pk %}">Edit note</a>{% endif %}
-      </form>
-    </article>
-  {% empty %}
-    <p>No imported games yet.</p>
-  {% endfor %}
-</section>
+  <section class="panel">
+    <div class="library-heading">
+      <div><h2>Needs rating <span class="muted">{{ unrated|length }}</span></h2><p class="muted">Games in your Steam library you have not reviewed yet.</p></div>
+      <div><form method="post" action="{% url 'steam_sync' %}">{% csrf_token %}<button{% if recently_synced %} class="quiet"{% endif %}>Sync library</button></form><span class="muted">Last synced: {% if account.last_synced_at %}<time datetime="{{ account.last_synced_at|date:'c' }}" data-local-time>{{ account.last_synced_at|date:'M j, Y H:i' }} UTC</time>{% else %}Never{% endif %}</span></div>
+    </div>
+    {% for entry in unrated %}
+      <article class="preference library-item">
+        <h3>{{ entry.game.title }}</h3>
+        <div class="actions">
+          <a href="{% url 'preference_new' %}?game={{ entry.game_id }}&amp;feeling=like&amp;next=library">Like</a>
+          <a href="{% url 'preference_new' %}?game={{ entry.game_id }}&amp;feeling=dislike&amp;next=library">Dislike</a>
+          <form method="post" action="{% url 'library_curate' entry.game_id %}">{% csrf_token %}<button class="quiet" name="sentiment" value="0">Ignore</button></form>
+        </div>
+      </article>
+    {% empty %}<p>No games need rating right now.</p>{% endfor %}
+  </section>
 {% endif %}
+{% for label, games in rated_sections %}
+  <section class="panel">
+    <h2>{{ label }} <span class="muted">{{ games|length }}</span></h2>
+    {% for pref in games %}
+      <article class="preference library-item">
+        <h3>{{ pref.game.title }}</h3>
+        <p>{{ pref.reason|default:'No reason added yet.' }}</p>
+        <div class="actions"><a href="{% url 'preference_edit' pref.pk %}?next=library">Edit rating</a><form method="post" action="{% url 'preference_delete' pref.pk %}?next=library">{% csrf_token %}<button class="quiet">Remove rating</button></form></div>
+      </article>
+    {% empty %}<p>No {{ label|lower }} games yet. <a href="{% url 'game_search' %}">Find a game to rate</a>.</p>{% endfor %}
+  </section>
+{% endfor %}
+<section class="panel">
+  <h2>Ignored <span class="muted">{{ ignored|length }}</span></h2>
+  {% for pref in ignored %}
+    <article class="preference library-item">
+      <h3>{{ pref.game.title }}</h3>
+      <div class="actions"><a href="{% url 'preference_edit' pref.pk %}?feeling=like&amp;next=library">Like</a><a href="{% url 'preference_edit' pref.pk %}?feeling=dislike&amp;next=library">Dislike</a><form method="post" action="{% url 'preference_delete' pref.pk %}?next=library">{% csrf_token %}<button class="quiet">Remove</button></form></div>
+    </article>
+  {% empty %}<p>No ignored games.</p>{% endfor %}
+</section>
 {% endblock %}

@@ -108,19 +108,22 @@ class SteamTests(TestCase):
         self.client.force_login(self.other)
         self.assertEqual(self.client.post(reverse('library_curate', args=[game.pk]), {'sentiment': -1}).status_code, 404)
 
-    def test_local_lookup_first_then_persisted_catalogue_and_title_fallback(self):
+    def test_lookup_uses_local_catalogue_and_title_fallback(self):
         local = Game.objects.create(title='Local game')
         with patch('app.views.refresh_catalogue') as refresh:
             response = self.client.post(reverse('game_search'), {'query': 'Local'})
         self.assertContains(response, local.title)
         refresh.assert_not_called()
         with patch('app.steam.catalogue_pages', return_value=iter([{'620': 'Portal 2'}])) as pages:
+            self.client.post(reverse('catalogue_refresh'))
             response = self.client.post(reverse('game_search'), {'query': 'Portal'})
         self.assertContains(response, 'Portal 2')
         pages.assert_called_once()
         self.assertTrue(CatalogueState.objects.filter(provider='steam').exists())
         identity = GameIdentity.objects.get(provider='steam', external_id='620')
         self.assertEqual(identity.game.title, 'Portal 2')
+        response = self.client.post(reverse('game_search'), {'query': 'PORTAL 2'})
+        self.assertNotContains(response, 'as a title only game')
         self.client.post(reverse('preference_new'), {
             'subject': 'Portal 2', 'game_id': identity.game_id, 'sentiment': -1, 'reason': 'Too tricky',
         })
@@ -134,6 +137,31 @@ class SteamTests(TestCase):
         refresh.assert_not_called()
         self.client.post(reverse('preference_new'), {'subject': 'Unknown', 'sentiment': 1, 'reason': 'Novel'})
         self.assertTrue(Preference.objects.filter(user=self.user, game__title='Unknown', reason='Novel').exists())
+
+    def test_library_sections_and_reason_prompt(self):
+        unrated = Game.objects.create(title='Unrated')
+        ignored = Game.objects.create(title='Ignored')
+        Ownership.objects.bulk_create([Ownership(account=self.account, game=game) for game in (unrated, ignored)])
+        Preference.objects.create(user=self.user, game=ignored, sentiment=0)
+        manual = Game.objects.create(title='Manual favorite')
+        Preference.objects.create(user=self.user, game=manual, sentiment=1, reason='Story')
+        disliked = Game.objects.create(title='Manual dislike')
+        Preference.objects.create(user=self.user, game=disliked, sentiment=-1, reason='Too slow')
+        response = self.client.get(reverse('library'))
+        self.assertEqual([entry.game.title for entry in response.context['unrated']], ['Unrated'])
+        self.assertEqual(
+            [(label, [pref.game.title for pref in games]) for label, games in response.context['rated_sections']],
+            [('Liked', ['Manual favorite']), ('Disliked', ['Manual dislike'])],
+        )
+        self.assertEqual([pref.game.title for pref in response.context['ignored']], ['Ignored'])
+        self.assertNotContains(self.client.get(reverse('home')), 'Import your Steam library')
+        response = self.client.post(reverse('library_curate', args=[unrated.pk]), {'sentiment': -1})
+        self.assertEqual(Preference.objects.filter(user=self.user, game=unrated).count(), 0)
+        form = self.client.get(response['Location'])
+        self.assertEqual(form.context['form'].initial['sentiment'], -1)
+        self.assertContains(form, 'Why?')
+        self.client.post(response['Location'], {'subject': 'Unrated', 'game_id': unrated.pk, 'sentiment': -1, 'reason': 'Too slow'})
+        self.assertTrue(Preference.objects.filter(user=self.user, game=unrated, sentiment=-1, reason='Too slow').exists())
 
     def test_private_response_cannot_remove_owned_games(self):
         game = Game.objects.create(title='Safe game')

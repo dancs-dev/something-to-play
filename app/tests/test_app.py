@@ -5,8 +5,9 @@ import httpx
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
 
-from app.models import Game, Preference, RecommendationRun
+from app.models import CatalogueState, Game, LinkedAccount, Preference, RecommendationRun
 from app.recommendations import RecommendationError, ask_provider
 
 GAMES = [{'title': 'The Talos Principle', 'rationale': 'Its puzzle solving fits your reasons for liking Portal 2.',
@@ -44,6 +45,22 @@ class AppTests(TestCase):
         self.preference.refresh_from_db()
         self.assertEqual(self.preference.sentiment, -1)
         self.assertEqual(self.preference.reason, 'Changed my mind')
+
+    def test_displayed_times_include_browser_convertible_instants(self):
+        now = timezone.now()
+        run = RecommendationRun.objects.create(user=self.user, inputs={}, results=GAMES)
+        LinkedAccount.objects.create(user=self.user, provider='steam', external_user_id='123', last_synced_at=now)
+        CatalogueState.objects.create(provider='steam', last_synced_at=now)
+        for url, stamp in (
+            (reverse('home'), run.created_at),
+            (reverse('history'), run.created_at),
+            (reverse('library'), now),
+            (reverse('settings'), now),
+        ):
+            with self.subTest(url=url):
+                response = self.client.get(url)
+                self.assertContains(response, f'<time datetime="{stamp.isoformat()}"')
+                self.assertContains(response, '/static/app/local-time.js')
 
     def test_recommendation_calls_provider_in_request_with_only_own_taste(self):
         Preference.objects.create(user=self.other, game=Game.objects.create(title='Private game'), sentiment=-1, reason='Private reason')

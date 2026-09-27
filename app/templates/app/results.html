@@ -2,7 +2,7 @@
   {% if error %}<p class="notice" role="alert">{{ error }}</p>{% endif %}
   {% if run %}
     <h2>Your picks</h2>
-    <p class="muted">{{ run.created_at|date:'M j, H:i' }} · {% if run.inputs.model %}AI suggestions based on your saved taste.{% else %}Previously saved picks.{% endif %}</p>
+    <p class="muted"><time datetime="{{ run.created_at|date:'c' }}" data-local-time="short">{{ run.created_at|date:'M j, H:i' }} UTC</time> · {% if run.inputs.model %}AI suggestions based on your saved taste.{% else %}Previously saved picks.{% endif %}</p>
     <div class="grid recommendations">
       {% for result in run.results %}
         <article class="card">
