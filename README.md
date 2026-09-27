@@ -10,7 +10,7 @@ Something to Play keeps your game ratings and reasons, then uses an OpenAI-compa
 
 ### Optional external providers
 
-Ollama is the default AI provider. The app expects `http://localhost:11434/v1` and the model `qwen3.5:latest`. To use another OpenAI-compatible Chat Completions provider, set `OPENAI_COMPATIBLE_BASE_URL`, `OPENAI_COMPATIBLE_MODEL`, and, if required, `OPENAI_COMPATIBLE_API_KEY` in `.env`. The model endpoint must support JSON mode.
+Ollama is the default AI provider. The app expects `http://localhost:11434/v1` and the model `gemma4:latest`. To use another OpenAI-compatible Chat Completions provider, set `OPENAI_COMPATIBLE_BASE_URL`, `OPENAI_COMPATIBLE_MODEL`, and, if required, `OPENAI_COMPATIBLE_API_KEY` in `.env`. The model endpoint must support JSON mode.
 
 Set `STEAM_WEB_API_KEY` in `.env` to enable Steam profile lookup, library sync, or catalogue search. Keep provider and Steam keys on the server. The app sends your saved ratings and recommendation request to the configured AI provider.
 
