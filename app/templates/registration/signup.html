@@ -1,8 +1,9 @@
 {% extends 'app/base.html' %}
+{% block title %}Create an account{% endblock %}
 {% block content %}
 <section class="panel narrow">
   <h1>Create your account</h1>
-  <p>Keep your own list of games and recommendations.</p>
+  <p>Save the games you’ve rated and come back to your picks.</p>
   <form method="post">
     {% csrf_token %}
     {{ form.non_field_errors }}

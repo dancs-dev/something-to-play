@@ -123,7 +123,7 @@ class SteamTests(TestCase):
         identity = GameIdentity.objects.get(provider='steam', external_id='620')
         self.assertEqual(identity.game.title, 'Portal 2')
         response = self.client.post(reverse('game_search'), {'query': 'PORTAL 2'})
-        self.assertNotContains(response, 'as a title only game')
+        self.assertNotContains(response, 'Add “Portal 2” yourself')
         self.client.post(reverse('preference_new'), {
             'subject': 'Portal 2', 'game_id': identity.game_id, 'sentiment': -1, 'reason': 'Too tricky',
         })
@@ -133,7 +133,7 @@ class SteamTests(TestCase):
         self.assertTrue(Preference.objects.filter(user=self.user, game=identity.game, reason='Too tricky').exists())
         with patch('app.views.refresh_catalogue') as refresh:
             response = self.client.post(reverse('game_search'), {'query': 'Unknown'})
-        self.assertContains(response, 'Use “Unknown” as a title only game')
+        self.assertContains(response, 'Add “Unknown” yourself')
         refresh.assert_not_called()
         self.client.post(reverse('preference_new'), {'subject': 'Unknown', 'sentiment': 1, 'reason': 'Novel'})
         self.assertTrue(Preference.objects.filter(user=self.user, game__title='Unknown', reason='Novel').exists())
@@ -186,7 +186,7 @@ class SteamTests(TestCase):
         search = self.client.get(reverse('game_search'), {'query': 'Portal 2', 'feeling': 'dislike'})
         self.assertEqual(search.context['results'][0].pk, steam_game.pk)
         self.assertEqual([game.title for game in search.context['results']], ['Portal 2'])
-        self.assertNotContains(search, 'as a title only game')
+        self.assertNotContains(search, 'Add “Portal 2” yourself')
         search = self.client.post(reverse('game_search'), {'query': 'Portal 2', 'feeling': 'dislike'})
         self.assertEqual(search.context['feeling'], 'dislike')
         url = reverse('preference_new') + f'?game={steam_game.pk}&feeling=dislike'

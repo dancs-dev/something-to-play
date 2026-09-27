@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Next Play · Find your next game{% endblock %}</title>
+  <title>Something to Play - {% block title %}Home{% endblock %}</title>
   <link rel="stylesheet" href="{% static 'app/style.css' %}">
   <script src="{% static 'app/htmx.min.js' %}" defer></script>
   <script src="{% static 'app/local-time.js' %}" defer></script>
@@ -11,7 +11,7 @@
 <body>
   <a class="skip" href="#main">Skip to content</a>
   <header>
-    <a class="brand" href="{% url 'home' %}"><span class="brand-mark" aria-hidden="true">↗</span> Next Play</a>
+    <a class="brand" href="{% url 'home' %}"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M6.2 7h11.6c2.3 0 3.8 1.4 4.4 3.7l1.4 5.3c.6 2.3-2 3.9-3.8 2.4L16.7 16H7.3l-3.1 2.4c-1.8 1.5-4.4-.1-3.8-2.4l1.4-5.3C2.4 8.4 3.9 7 6.2 7Z"/><path d="M6 9h2v2h2v2H8v2H6v-2H4v-2h2Z" fill="var(--accent)"/><circle cx="15.5" cy="11" r="1.2" fill="var(--accent)"/><circle cx="19" cy="13" r="1.2" fill="var(--accent)"/></svg></span> Something to Play</a>
     <nav aria-label="Main navigation">
       {% if user.is_authenticated %}
         <a href="{% url 'home' %}"{% if request.resolver_match.url_name == 'home' %} aria-current="page"{% endif %}>Home</a>

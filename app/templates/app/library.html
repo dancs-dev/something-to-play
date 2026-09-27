@@ -1,8 +1,9 @@
 {% extends 'app/base.html' %}
+{% block title %}Library{% endblock %}
 {% block content %}
 <p class="eyebrow">YOUR COLLECTION</p>
 <h1>Your library</h1>
-<p class="lead">Your Steam games and the games you have rated, all in one place.</p>
+<p class="lead">Your Steam games and the games you’ve rated.</p>
 <p><a href="{% url 'game_search' %}">Add a game</a>{% if not account %} · <a href="{% url 'settings' %}">Connect your Steam library</a>{% endif %}</p>
 {% if account %}
   <section class="panel">
@@ -26,7 +27,7 @@
 {% endif %}
 <section class="panel library-section">
   <h2>Not played yet <span class="muted">{{ not_played|length }}</span></h2>
-  <p class="muted library-description">Games you've marked as unplayed. Owned ones can appear in your picks.</p>
+  <p class="muted library-description">Games you haven’t played yet. Ones you own can turn up in your picks.</p>
   {% for pref in not_played %}
     <article class="preference library-item">
       <h3>{{ pref.game.title }}</h3>
@@ -37,7 +38,7 @@
 {% for label, games in rated_sections %}
   <section class="panel library-section">
     <h2>{{ label }} <span class="muted">{{ games|length }}</span></h2>
-    <p class="muted library-description">{% if label == 'Loved' %}Games you consider exceptional. These carry the most weight in your picks.{% elif label == 'Liked' %}Games you enjoyed. Your reasons help us find more like them.{% else %}Games that weren't for you. Your reasons help us avoid similar picks.{% endif %}</p>
+    <p class="muted library-description">{% if label == 'Loved' %}Games you loved. These carry the most weight in your picks.{% elif label == 'Liked' %}Games you enjoyed. Your reasons help find similar games.{% else %}Games you didn’t enjoy. Your reasons help avoid similar picks.{% endif %}</p>
     {% for pref in games %}
       <article class="preference library-item">
         <h3>{{ pref.game.title }}</h3>
@@ -49,7 +50,7 @@
 {% endfor %}
 <section class="panel library-section">
   <h2>Ignored <span class="muted">{{ ignored|length }}</span></h2>
-  <p class="muted library-description">Set aside without a rating. These won't influence your picks.</p>
+  <p class="muted library-description">Games you’ve set aside without a rating. They won’t affect your picks.</p>
   {% for pref in ignored %}
     <article class="preference library-item">
       <h3>{{ pref.game.title }}</h3>

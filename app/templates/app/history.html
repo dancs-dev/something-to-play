@@ -1,6 +1,9 @@
 {% extends 'app/base.html' %}
+{% block title %}Past picks{% endblock %}
 {% block content %}
+  <p class="eyebrow">YOUR SAVED PICKS</p>
   <h1>Past picks</h1>
+  <p class="lead">Earlier picks are saved here, along with any note you added.</p>
   <section class="panel">
     {% for run in runs %}
       <p><a href="{% url 'run' run.pk %}"><time datetime="{{ run.created_at|date:'c' }}" data-local-time>{{ run.created_at|date:'M j, Y H:i' }} UTC</time></a>{% if run.inputs.request %} · {{ run.inputs.request }}{% endif %}</p>

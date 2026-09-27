@@ -211,9 +211,13 @@ class AppTests(TestCase):
         self.assertEqual(ask.call_args.args[0], [{'game': 'Portal 2', 'feeling': 'loved', 'reason': 'Clever puzzles'}])
         self.assertEqual(ask.call_args.kwargs['owned'], owned)
         page = self.client.get(reverse('run', args=[run.pk]))
+        self.assertContains(page, 'Your picks')
         self.assertContains(page, 'Favourites to revisit')
-        self.assertContains(page, "Games you haven't played yet")
-        self.assertContains(page, 'New games to explore')
+        self.assertContains(page, 'Games you haven’t played yet')
+        self.assertContains(page, 'Games you might like')
+        home = self.client.get(reverse('home'))
+        self.assertContains(home, 'Latest picks')
+        self.assertContains(home, 'class="has-picks"')
 
     def test_recommender_accepts_three_picks_in_each_group(self):
         owned = {

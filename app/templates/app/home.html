@@ -3,34 +3,34 @@
 {% block content %}
 {% if user.is_authenticated %}
   {% if has_taste %}
-    <p class="eyebrow">YOUR NEXT PLAY</p>
-    <h1>Find your next game.</h1>
-    <p class="lead">Tell us what you’re in the mood for. We’ll use the games you’ve rated to find a fit.</p>
+    <p class="eyebrow">YOUR NEXT GAME</p>
+    <h1>Find something to play</h1>
+    <p class="lead">Picks draw on the games you’ve rated and your reasons.</p>
     <div class="home-cards">
       <section class="panel request-panel">
-        <h2>What should you play next?</h2>
+        <h2>Anything in particular?</h2>
         <form method="post" action="{% url 'recommend' %}"
               hx-post="{% url 'recommend' %}" hx-target="#results" hx-swap="outerHTML"
               hx-indicator="#thinking" hx-disabled-elt="find button" hx-request='{"timeout":100000}'>
           {% csrf_token %}
           {{ recommendation_form.as_p }}
-          <button>Find my next game</button>
-          <span id="thinking" class="htmx-indicator" role="status">Finding your next game… this may take a minute.</span>
+          <button>Find games</button>
+          <span id="thinking" class="htmx-indicator" role="status">Looking for games… this may take a minute.</span>
         </form>
       </section>
       <section class="panel">
         <h2>Played something recently?</h2>
-        <p>Add it to your library or update your rating. Your next picks will reflect what you thought.</p>
+        <p>Add it to your library or update your rating. It’ll help with future picks.</p>
         <a href="{% url 'library' %}">Update your library →</a>
       </section>
     </div>
   {% else %}
-    <p class="eyebrow">YOUR NEXT PLAY</p>
-    <h1>Start with what you like.</h1>
-    <p class="lead">Rate a game you loved—or one that didn’t work for you. We’ll use your taste to find your next play.</p>
+    <p class="eyebrow">YOUR NEXT GAME</p>
+    <h1>Start with a game you’ve played</h1>
+    <p class="lead">Rate a game you’ve played and add a few words about what worked or didn’t.</p>
     <section class="panel">
       <h2>Add a game</h2>
-      <p>Find a game by title, or save one that is not on Steam.</p>
+      <p>Search for a game by title. You can add it yourself if it’s not in the catalogue.</p>
       <a class="button" href="{% url 'game_search' %}">Find a game</a>
       {% if not steam_connected %}<p><a href="{% url 'settings' %}">Import your Steam library</a></p>{% endif %}
     </section>
@@ -39,16 +39,16 @@
 {% else %}
   <section class="hero">
     <div>
-      <h1>Find your next <em>game.</em></h1>
-      <p class="lead">Rate games you’ve played and tell us what worked. We’ll suggest games to try, explain why they fit, and flag possible dealbreakers.</p>
+      <h1>Your next game</h1>
+      <p class="lead">Rate games you’ve played and note what worked or didn’t. Each pick comes with a reason and a possible drawback.</p>
       <a class="button" href="{% url 'signup' %}">Get started <span aria-hidden="true">↗</span></a>
     </div>
     <img class="game-art" src="{% static 'app/hero-game.svg' %}" alt="" aria-hidden="true">
   </section>
   <section class="steps" aria-label="How it works">
-    <div><span class="section-number">01 / COLLECT</span><h2>Start with your favorites.</h2><p>The games you loved. The ones you didn’t. Give your taste a place to live.</p></div>
-    <div><span class="section-number">02 / REFLECT</span><h2>It’s all in the why.</h2><p>The story, the puzzles, the sense of discovery. Tell us what makes a game yours.</p></div>
-    <div><span class="section-number">03 / DISCOVER</span><h2>Meet your next obsession.</h2><p>Get a few AI-powered picks, with reasons to try them and the possible dealbreakers.</p></div>
+    <div><span class="section-number">01 / ADD GAMES</span><h2>Add games you’ve played</h2><p>Start with one you loved, liked, or disliked.</p></div>
+    <div><span class="section-number">02 / SAY WHY</span><h2>Say what you thought</h2><p>Add a note about anything that stood out, from the story to the pacing.</p></div>
+    <div><span class="section-number">03 / GET PICKS</span><h2>See your picks</h2><p>Get a few AI suggestions, with reasons they might suit you and things you might not enjoy.</p></div>
   </section>
 {% endif %}
 {% endblock %}

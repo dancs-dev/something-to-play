@@ -1,4 +1,5 @@
 {% extends 'app/base.html' %}
+{% block title %}{% if preference %}Edit a game{% else %}Add a game{% endif %}{% endblock %}
 {% block content %}
 <section class="panel narrow">
   <h1>{% if preference %}Edit{% else %}Add{% endif %} a game</h1>

@@ -10,7 +10,7 @@ class PreferenceForm(forms.ModelForm):
         model = Preference
         fields = ('sentiment', 'reason')
         labels = {'sentiment': 'How did you feel about it?', 'reason': 'Why?'}
-        widgets = {'reason': forms.Textarea(attrs={'rows': 3, 'placeholder': 'The details help: exploration, story, combat, pacing…'})}
+        widgets = {'reason': forms.Textarea(attrs={'rows': 3, 'placeholder': 'For example: I liked the puzzles, but the pacing dragged.'})}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

@@ -1,4 +1,5 @@
 {% extends 'app/base.html' %}
+{% block title %}Find a game{% endblock %}
 {% block content %}
 <section class="panel narrow">
   <h1>Find a game</h1>
@@ -14,9 +15,9 @@
     {% for game in results %}
       <p><a href="{% url 'preference_new' %}?game={{ game.pk }}&amp;feeling={{ feeling|urlencode }}">{{ game.title }}</a></p>
     {% empty %}
-      <p>No matching game found.</p>
+      <p>No games found with that title.</p>
     {% endfor %}
-    {% if not exact_match %}<p><a href="{% url 'preference_new' %}?title={{ query|urlencode }}&amp;feeling={{ feeling|urlencode }}">Use “{{ query }}” as a title only game</a></p>{% endif %}
+    {% if not exact_match %}<p><a href="{% url 'preference_new' %}?title={{ query|urlencode }}&amp;feeling={{ feeling|urlencode }}">Add “{{ query }}” yourself</a></p>{% endif %}
   {% endif %}
 </section>
 {% endblock %}

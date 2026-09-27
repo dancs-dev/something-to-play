@@ -1,4 +1,4 @@
-# Next Play
+# Something to Play
 
 Rate games Loved, Like, or Dislike, explain why, and get personal recommendations from an OpenAI-compatible AI provider.
 
