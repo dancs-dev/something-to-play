@@ -13,6 +13,7 @@ dev = [
     "django-stubs[compatible-mypy]",
     "mypy",
     "playwright",
+    "pre-commit>=4.6.2",
     "ruff",
 ]
 

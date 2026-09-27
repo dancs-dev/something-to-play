@@ -36,6 +36,14 @@ Open <http://localhost:8000> and create an account.
 
 ### Formatting, linting, and type checking
 
+Install the Git hooks once per clone:
+
+```bash
+uv run pre-commit install
+```
+
+Run both hooks manually across the repository with `uv run pre-commit run --all-files`.
+
 ```bash
 uv run ruff format .
 uv run ruff check .
