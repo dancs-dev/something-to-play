@@ -34,7 +34,7 @@ uv run --env-file .env python manage.py runserver
 
 Open <http://localhost:8000> and create an account.
 
-### Formatting, linting, and type checking
+### Code checks and secret scanning
 
 Install the Git hooks once per clone:
 
@@ -42,7 +42,7 @@ Install the Git hooks once per clone:
 uv run pre-commit install
 ```
 
-Run both hooks manually across the repository with `uv run pre-commit run --all-files`.
+Run all hooks manually across the repository with `uv run pre-commit run --all-files`.
 
 ```bash
 uv run ruff format .
