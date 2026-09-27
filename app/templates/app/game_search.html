@@ -1,0 +1,23 @@
+{% extends 'app/base.html' %}
+{% block content %}
+<section class="panel narrow">
+  <h1>Find a game</h1>
+  <form method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button>Search games</button>
+  </form>
+  {% if error %}<p class="notice" role="alert">{{ error }}</p>{% endif %}
+  {% if query %}
+    <h2>Matches</h2>
+    {% for game in results %}
+      <p><a href="{% url 'preference_new' %}?game={{ game.pk }}&amp;feeling={{ feeling|urlencode }}">{{ game.title }}</a></p>
+    {% empty %}
+      <p>No matching game found.</p>
+    {% endfor %}
+    <p><a href="{% url 'preference_new' %}?title={{ query|urlencode }}&amp;feeling={{ feeling|urlencode }}">Use “{{ query }}” as a title only game</a></p>
+  {% endif %}
+  <p class="muted">Steam catalogue last refreshed: {{ catalogue.last_synced_at|default:'Never' }}</p>
+  <form method="post" action="{% url 'catalogue_refresh' %}">{% csrf_token %}<button class="quiet">Refresh Steam catalogue</button></form>
+</section>
+{% endblock %}

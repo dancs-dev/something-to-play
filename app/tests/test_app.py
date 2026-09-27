@@ -6,7 +6,7 @@ from django.contrib.auth import get_user_model
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 
-from app.models import Preference, RecommendationRun
+from app.models import Game, Preference, RecommendationRun
 from app.recommendations import RecommendationError, ask_provider
 
 GAMES = [{'title': 'The Talos Principle', 'rationale': 'Its puzzle solving fits your reasons for liking Portal 2.',
@@ -18,7 +18,8 @@ class AppTests(TestCase):
     def setUp(self):
         self.user = get_user_model().objects.create_user('alice', password='test-password')
         self.other = get_user_model().objects.create_user('bob', password='test-password')
-        self.preference = Preference.objects.create(user=self.user, subject='Portal 2', sentiment=1, reason='Clever puzzles')
+        self.game = Game.objects.create(title='Portal 2')
+        self.preference = Preference.objects.create(user=self.user, game=self.game, sentiment=1, reason='Clever puzzles')
         self.client.force_login(self.user)
 
     def test_signup_and_taste_crud(self):
@@ -27,7 +28,7 @@ class AppTests(TestCase):
             'password1': 'a-long-password-872', 'password2': 'a-long-password-872'}, follow=True)
         self.assertContains(response, 'Add a game')
         self.client.post(reverse('preference_new'), {'subject': 'Outer Wilds', 'sentiment': 1, 'reason': 'Exploration'})
-        pref = Preference.objects.get(subject='Outer Wilds')
+        pref = Preference.objects.get(game__title='Outer Wilds')
         self.assertNotEqual(pref.user_id, self.user.pk)
         self.client.post(reverse('preference_edit', args=[pref.pk]),
                          {'subject': 'Outer Wilds', 'sentiment': -1, 'reason': 'Actually, the time pressure'})
@@ -45,7 +46,7 @@ class AppTests(TestCase):
         self.assertEqual(self.preference.reason, 'Changed my mind')
 
     def test_recommendation_calls_provider_in_request_with_only_own_taste(self):
-        Preference.objects.create(user=self.other, subject='Private game', sentiment=-1, reason='Private reason')
+        Preference.objects.create(user=self.other, game=Game.objects.create(title='Private game'), sentiment=-1, reason='Private reason')
         with patch('app.recommendations.ask_provider', return_value=GAMES) as ask:
             response = self.client.post(reverse('recommend'), {'context': 'Something relaxing'}, HTTP_HX_REQUEST='true')
         ask.assert_called_once_with([{'game': 'Portal 2', 'feeling': 'like', 'reason': 'Clever puzzles'}], 'Something relaxing')
@@ -80,7 +81,7 @@ class AppTests(TestCase):
 
     def test_account_isolation_and_feedback_prefill(self):
         run = RecommendationRun.objects.create(user=self.other, inputs={}, results=GAMES)
-        other_pref = Preference.objects.create(user=self.other, subject='Other', sentiment=1, reason='Private')
+        other_pref = Preference.objects.create(user=self.other, game=Game.objects.create(title='Other'), sentiment=1, reason='Private')
         for url in (reverse('run', args=[run.pk]), reverse('preference_edit', args=[other_pref.pk]),
                     reverse('preference_new') + f'?run={run.pk}&index=0'):
             self.assertEqual(self.client.get(url).status_code, 404)

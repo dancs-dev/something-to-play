@@ -77,8 +77,8 @@ def ask_provider(taste, context='', *, transport=None):
 
 
 def create_run(user, context=''):
-    taste = [{'game': p.subject, 'feeling': p.get_sentiment_display().lower(), 'reason': p.reason}
-             for p in Preference.objects.filter(user=user)]
+    taste = [{'game': p.game.title, 'feeling': p.get_sentiment_display().lower(), 'reason': p.reason}
+             for p in Preference.objects.filter(user=user).exclude(sentiment=0).select_related('game')]
     if not taste:
         raise RecommendationError('Add a game you like or dislike first, so the AI has something to work with.')
     results = ask_provider(taste, context)

@@ -12,7 +12,7 @@ uv run python manage.py migrate
 uv run python manage.py runserver
 ```
 
-Open <http://localhost:8000>, create an account, add games and reasons, then click **Find my next game**. That request calls the configured provider immediately and returns its suggestions. There is no worker, import job, scoring pipeline or seeded catalogue.
+Open <http://localhost:8000>, create an account, add games and reasons, then click **Find my next game**. That request calls the configured provider immediately and returns its suggestions. There is no worker or scheduled import job.
 
 The defaults are `http://localhost:11434/v1` and `qwen3.5:latest`, so a local Ollama instance works without a key. To use another OpenAI-compatible Chat Completions provider, set `OPENAI_COMPATIBLE_BASE_URL`, `OPENAI_COMPATIBLE_MODEL`, and, when required, `OPENAI_COMPATIBLE_API_KEY` in the environment or `.env`. For example, use `https://api.openai.com/v1` for OpenAI or `https://openrouter.ai/api/v1` for OpenRouter, and set the model ID supported by that provider. The endpoint and selected model must support Chat Completions with JSON mode.
 
@@ -22,15 +22,15 @@ Keep provider keys server-side; do not put them in templates or browser code. Th
 uv run --env-file .env python manage.py runserver
 ```
 
-The ordinary command works without `.env`. `uv` maintains `pyproject.toml` and the committed `uv.lock`. No frontend build is needed; templates and the locally vendored HTMX asset handle the interface.
+The ordinary command works without `.env`. Set `STEAM_WEB_API_KEY` in the server environment to enable optional Steam profile lookup, library sync, and catalogue search. No Steam sign-in is used: users enter a Steam ID or profile URL, so the association is unverified and the profile's game details must be visible. The key stays on the server. `uv` maintains `pyproject.toml` and the committed `uv.lock`. No frontend build is needed; templates and the locally vendored HTMX asset handle the interface.
 
 ## How it works
 
-There are two application models: `Preference` (user, game name, like/dislike, reason) and `RecommendationRun` (user, saved input and AI response).
+Games have local titles and optional provider identities, such as a Steam app ID. Linked profiles and ownership are stored separately from each user's Like, Dislike, or Ignore choice and note. A sync runs only when the user presses **Sync library**; it adds new games, marks games missing from the latest visible library as inactive, and records the sync time. It never changes a user's choice or note. Manual game search checks local games first, then loads Steam's game catalogue on the first miss; later catalogue refreshes require an explicit button press and request only apps changed since the previous successful refresh. Games outside Steam can be saved by title.
 
-The app sends that user's complete taste list and an optional current request to the configured provider. The model returns game titles, personal rationales and potential drawbacks. JSON responses are validated; duplicate and already-listed games are removed. The app saves successful responses so users can revisit them. “Liked it” / “Disliked it” opens an editable taste entry so the user can add their reason.
+The app sends that user's Like and Dislike list and an optional current request to the configured provider. Ownership and Ignore are excluded. The model returns game titles, personal rationales and potential drawbacks. JSON responses are validated; duplicate and already-listed games are removed. The app saves successful responses so users can revisit them. “Liked it” / “Disliked it” opens an editable taste entry so the user can add their reason.
 
-The configured model uses its knowledge. These are AI suggestions, not verified catalogue facts; there is no web search or Steam connection. A model/network error is displayed honestly with a retry path rather than replaced by unrelated picks. The request has a 90-second timeout. With a hosted provider, the user's taste and request are sent to that provider.
+The configured model uses its knowledge. These are AI suggestions, not verified catalogue facts. A model/network error is displayed honestly with a retry path rather than replaced by unrelated picks. The request has a 90-second timeout. With a hosted provider, the user's taste and request are sent to that provider. Steam profile IDs and owned games are stored locally; Steam receives the profile ID only during a user-requested link or sync.
 
 Accounts use Django authentication and CSRF protection. Queries are scoped to the signed-in user. SQLite writes occur after the model request, with no transaction held during inference.
 

@@ -1,0 +1,34 @@
+{% extends 'app/base.html' %}
+{% block content %}
+<section class="panel">
+  <h1>Your Steam library</h1>
+  <p>Enter a public Steam profile. This link is unverified; your game details must be visible for import. Imported ownership does not count as liking a game.</p>
+  <form method="post" action="{% url 'steam_link' %}">
+    {% csrf_token %}{{ link_form.as_p }}<button>{% if account %}Change profile{% else %}Link profile{% endif %}</button>
+  </form>
+  {% if account %}
+    <p>Steam ID: {{ account.external_user_id }} · Last synced: {{ account.last_synced_at|default:'Never' }}</p>
+    <form method="post" action="{% url 'steam_sync' %}">{% csrf_token %}<button>Sync library</button></form>
+  {% endif %}
+</section>
+{% if account %}
+<section class="panel">
+  <h2>Imported games</h2>
+  {% for entry in entries %}
+    <article class="preference">
+      <h3>{{ entry.game.title }}</h3>
+      <p>{% if entry.is_active %}Owned on Steam{% else %}No longer in the latest Steam library{% endif %} · {{ entry.curation.get_sentiment_display|default:'Needs review' }}</p>
+      <form method="post" action="{% url 'library_curate' entry.game_id %}">
+        {% csrf_token %}
+        <button name="sentiment" value="1">Like</button>
+        <button name="sentiment" value="-1">Dislike</button>
+        <button name="sentiment" value="0">Ignore</button>
+        {% if entry.curation and entry.curation.sentiment != 0 %}<a href="{% url 'preference_edit' entry.curation.pk %}">Edit note</a>{% endif %}
+      </form>
+    </article>
+  {% empty %}
+    <p>No imported games yet.</p>
+  {% endfor %}
+</section>
+{% endif %}
+{% endblock %}
