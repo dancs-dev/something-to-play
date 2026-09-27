@@ -10,13 +10,17 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from .models import Ownership, Preference, RecommendationRun
 
-PROMPT_VERSION = "grouped-recommendations-v3"
+PROMPT_VERSION = "grouped-recommendations-v4"
 PROMPT = "\n".join(
     (
         "Suggest games using the player's ratings and reasons. Loved is a much "
         "stronger positive signal than Like.",
         "Use the optional current request to tailor the picks. Explain each choice "
         "and mention a potential drawback.",
+        "Write rationales and drawbacks as natural advice about the games and the "
+        "player's tastes. Do not describe input lists, field names, rating records, "
+        "or the selection process; avoid phrases like 'you explicitly listed "
+        "this game'.",
         "Return up to three replay picks copied exactly from owned_liked, up to "
         "three backlog picks copied exactly from owned_not_played, and up to "
         "three discovery picks from your knowledge. Omit groups with no candidates.",
