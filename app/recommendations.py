@@ -217,7 +217,7 @@ def ask_provider(
 
             seen.add(key)
 
-    games = groups["replay"][:3] + groups["backlog"][:3] + groups["discover"][:3]
+    games = groups["discover"][:3] + groups["backlog"][:3] + groups["replay"][:3]
 
     if not games:
         raise RecommendationError(

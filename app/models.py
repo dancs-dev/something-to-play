@@ -1,14 +1,45 @@
+import re
+from collections import defaultdict
+from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
 from django.conf import settings
 from django.db import models
+from django.db.models import Prefetch, Q
+from django.db.models.base import ModelBase
+
+
+def normalize_title(title: str) -> str:
+    return " ".join(re.findall(r"\w+", title.casefold()))
 
 
 class Game(models.Model):
     title = models.CharField(max_length=200)
+    normalized_title = models.TextField(db_index=True, default="", editable=False)
 
     def __str__(self) -> str:
         return self.title
+
+    def save(
+        self,
+        *,
+        force_insert: bool | tuple[ModelBase, ...] = False,
+        force_update: bool = False,
+        using: str | None = None,
+        update_fields: Iterable[str] | None = None,
+    ) -> None:
+        self.normalized_title = normalize_title(self.title)
+        if update_fields is not None:
+            fields = set(update_fields)
+            if "title" in fields:
+                fields.add("normalized_title")
+            update_fields = fields
+        super().save(
+            force_insert=force_insert,
+            force_update=force_update,
+            using=using,
+            update_fields=update_fields,
+        )
 
 
 class GameIdentity(models.Model):
@@ -97,6 +128,47 @@ class Preference(models.Model):
         return f"{self.game.title}: {self.get_sentiment_display()}"
 
 
+def _steam_appids_for_titles(titles: list[str]) -> dict[str, list[str]]:
+    targets = {
+        title: normalize_title(re.sub(r"\s+\((?:19|20)\d{2}\)$", "", title))
+        for title in titles
+    }
+    keys = {key for key in targets.values() if key}
+    if not keys:
+        return {title: [] for title in titles}
+    lookup = Q(normalized_title__in=keys)
+    for key in keys:
+        if " " in key:
+            lookup |= Q(normalized_title__gte=key + " ", normalized_title__lt=key + "!")
+    candidates: dict[str, list[str]] = defaultdict(list)
+    games = Game.objects.filter(lookup).prefetch_related(
+        Prefetch("identities", queryset=GameIdentity.objects.filter(provider="steam"))
+    )
+    for game in games:
+        candidates[game.normalized_title].extend(
+            identity.external_id for identity in game.identities.all()
+        )
+    matches = {}
+    for title, target in targets.items():
+        exact = candidates.get(target, [])
+        if exact:
+            matches[title] = exact
+            continue
+        # ponytail: one-word edition searches are too broad; add aliases if needed.
+        matches[title] = [
+            appid
+            for name, appids in candidates.items()
+            if " " in target
+            and name.startswith(target + " ")
+            and re.search(
+                r"\b(?:edition|cut|complete|definitive|ultimate|deluxe)\b",
+                name[len(target) + 1 :],
+            )
+            for appid in appids
+        ]
+    return matches
+
+
 class RecommendationRun(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -105,3 +177,54 @@ class RecommendationRun(models.Model):
 
     def __str__(self) -> str:
         return f"Recommendation run {self.pk} for {self.user}"
+
+    @property
+    def illustrated_results(self) -> list[dict[str, str]]:
+        results = sorted(
+            self.results,
+            key=lambda result: {"discover": 0, "backlog": 1, "replay": 2}.get(
+                result.get("category"), 3
+            ),
+        )
+        matches = _steam_appids_for_titles(
+            [result.get("title", "") for result in results]
+        )
+        ambiguous = {
+            appid
+            for result in results
+            if result.get("category") in {"replay", "backlog"}
+            for appids in [matches[result.get("title", "")]]
+            if len(appids) > 1
+            for appid in appids
+        }
+        owned = (
+            set(
+                GameIdentity.objects.filter(
+                    provider="steam",
+                    external_id__in=ambiguous,
+                    game__ownership__account__user=self.user,
+                    game__ownership__is_active=True,
+                ).values_list("external_id", flat=True)
+            )
+            if ambiguous
+            else set()
+        )
+        illustrated = []
+        for result in results:
+            title = result.get("title", "")
+            appids = matches[title]
+            if len(appids) > 1 and result.get("category") in {"replay", "backlog"}:
+                appids = [appid for appid in appids if appid in owned]
+            appid = appids[0] if len(appids) == 1 else ""
+            valid_appid = (
+                appid if appid and appid.isascii() and appid.isdecimal() else ""
+            )
+            image_url = (
+                f"https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{valid_appid}/header.jpg"
+                if valid_appid
+                else ""
+            )
+            illustrated.append(
+                result | {"image_url": image_url, "steam_appid": valid_appid}
+            )
+        return illustrated

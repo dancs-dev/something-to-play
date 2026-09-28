@@ -70,6 +70,8 @@ button:disabled { opacity: .6; cursor: wait; }
 .library-item .actions { gap: 14px; }
 .actions { gap: 20px; font-size: 13px; }
 .card { border-top: 2px solid var(--text); overflow-wrap: anywhere; }
+.recommendations h3 a { text-decoration: none; }
+.recommendation-art { display: block; width: 100%; height: auto; aspect-ratio: 460 / 215; object-fit: cover; }
 .card > p { font-size: 14px; }
 #thinking { margin-left: 16px; color: var(--muted); font-size: 13px; }
 .errorlist { color: #a12e20; padding-left: 20px; }

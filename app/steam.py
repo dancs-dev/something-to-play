@@ -6,12 +6,52 @@ from urllib.parse import urlparse
 
 import httpx
 from django.conf import settings
+from django.core.cache import cache
 
 BASE_URL = "https://api.steampowered.com"
+STORE_APP_DETAILS_URL = "https://store.steampowered.com/api/appdetails"
+STEAM_COMMUNITY_URL = "https://steamcommunity.com"
+STEAM_ART_BASE_URL = (
+    "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/"
+)
 
 
 class SteamError(Exception):
     pass
+
+
+def header_image_url(
+    appid: str, *, transport: httpx.BaseTransport | None = None
+) -> str:
+    if not appid.isascii() or not appid.isdecimal():
+        return ""
+    key = f"steam-header-image:{appid}"
+    cached = cache.get(key)
+    if cached is not None:
+        return cached
+    try:
+        with httpx.Client(timeout=3, transport=transport) as client:
+            response = client.get(
+                STORE_APP_DETAILS_URL,
+                params={"appids": appid},
+            )
+            response.raise_for_status()
+            data = response.json()
+        image = data[appid]["data"]["header_image"]
+    except (httpx.HTTPError, ValueError, KeyError, TypeError):
+        return ""
+    if not isinstance(image, str):
+        return ""
+    parsed = urlparse(image)
+    art_base = urlparse(STEAM_ART_BASE_URL)
+    if (
+        parsed.scheme != art_base.scheme
+        or parsed.hostname != art_base.hostname
+        or not parsed.path.startswith(f"{art_base.path}{appid}/")
+    ):
+        return ""
+    cache.set(key, image, 86400)
+    return image
 
 
 def _get(
@@ -45,13 +85,14 @@ def resolve_profile(value: str, *, transport: httpx.BaseTransport | None = None)
         vanity = value
     else:
         parsed = urlparse(value)
+        community_host = urlparse(STEAM_COMMUNITY_URL).netloc
         if parsed.scheme != "https" or parsed.netloc.lower() not in {
-            "steamcommunity.com",
-            "www.steamcommunity.com",
+            community_host,
+            f"www.{community_host}",
         }:
             raise SteamError(
                 "Enter a Steam ID, custom URL name, or "
-                "https://steamcommunity.com profile URL."
+                f"{STEAM_COMMUNITY_URL} profile URL."
             )
         parts = parsed.path.strip("/").split("/")
         if len(parts) != 2 or not parts[1] or parsed.query or parsed.fragment:

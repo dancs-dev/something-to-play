@@ -8,9 +8,9 @@ from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.models import User
 from django.db import transaction
-from django.db.models import QuerySet
+from django.db.models import Case, Exists, OuterRef, QuerySet, Value, When
 from django.forms import ModelForm
-from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
+from django.http import Http404, HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse_lazy
 from django.utils import timezone
@@ -30,18 +30,34 @@ from .library import refresh_catalogue, sync_account
 from .models import (
     CatalogueState,
     Game,
+    GameIdentity,
     LinkedAccount,
     Ownership,
     Preference,
     RecommendationRun,
+    normalize_title,
 )
 from .recommendations import RecommendationError, create_run
-from .steam import SteamError, resolve_profile
+from .steam import SteamError, header_image_url, resolve_profile
 
 
 def game_by_title(title: str) -> Game | None:
-    matches = Game.objects.filter(title__iexact=title)
-    return matches.filter(identities__provider="steam").first() or matches.first()
+    key = normalize_title(title)
+    if not key:
+        return None
+    return (
+        Game.objects.filter(normalized_title=key)
+        .annotate(
+            literal_match=Case(
+                When(title__iexact=title, then=Value(1)), default=Value(0)
+            ),
+            has_steam=Exists(
+                GameIdentity.objects.filter(game_id=OuterRef("pk"), provider="steam")
+            ),
+        )
+        .order_by("-literal_match", "-has_steam", "pk")
+        .first()
+    )
 
 
 def find_game(title: str, game_id: int | str | None = None) -> Game:
@@ -79,6 +95,21 @@ class HomeView(TemplateView):
                 .first(),
             )
         return context
+
+
+class SteamArtView(LoginRequiredMixin, View):
+    def get(self, request: HttpRequest, appid: int) -> HttpResponse:
+        if (
+            not (0 < appid < 2**32)
+            or not GameIdentity.objects.filter(
+                provider="steam", external_id=str(appid)
+            ).exists()
+        ):
+            raise Http404
+        image_url = header_image_url(str(appid))
+        if not image_url:
+            raise Http404
+        return HttpResponseRedirect(image_url)
 
 
 class ProfileView(LoginRequiredMixin, TemplateView):

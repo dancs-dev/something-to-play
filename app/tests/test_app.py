@@ -4,19 +4,23 @@ from unittest.mock import patch
 
 import httpx
 from django.contrib.auth import get_user_model
+from django.db import connection
 from django.test import Client, TestCase, override_settings
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
 
 from app.models import (
     CatalogueState,
     Game,
+    GameIdentity,
     LinkedAccount,
     Ownership,
     Preference,
     RecommendationRun,
 )
 from app.recommendations import RecommendationError, ask_provider, create_run
+from app.views import game_by_title
 
 GAMES = [
     {
@@ -31,12 +35,8 @@ DISCOVERY_GAMES = GAMES + [GAMES[0] | {"title": f"New game {n}"} for n in range(
 @override_settings(PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"])
 class AppTests(TestCase):
     def setUp(self) -> None:
-        self.user = get_user_model().objects.create_user(
-            "alice", password="test-password"
-        )
-        self.other = get_user_model().objects.create_user(
-            "bob", password="test-password"
-        )
+        self.user = get_user_model().objects.create_user("alice")
+        self.other = get_user_model().objects.create_user("bob")
         self.game = Game.objects.create(title="Portal 2")
         self.preference = Preference.objects.create(
             user=self.user, game=self.game, sentiment=1, reason="Clever puzzles"
@@ -112,6 +112,30 @@ class AppTests(TestCase):
         self.assertEqual(self.preference.sentiment, -1)
         self.assertEqual(self.preference.reason, "Changed my mind")
 
+    def test_punctuation_insensitive_title_lookup_uses_index(self) -> None:
+        game = Game.objects.create(title="Marvel’s Spider-Man Remastered")
+        GameIdentity.objects.create(game=game, provider="steam", external_id="1817070")
+        with self.assertNumQueries(1):
+            self.assertEqual(game_by_title("Marvel's Spider-Man Remastered"), game)
+        self.assertIn(
+            "USING INDEX",
+            Game.objects.filter(
+                normalized_title="marvel s spider man remastered"
+            ).explain(),
+        )
+
+    def test_literal_title_still_precedes_punctuation_variant(self) -> None:
+        local = Game.objects.create(title="Marvel's Spider-Man Remastered")
+        steam = Game.objects.create(title="Marvel’s Spider-Man Remastered")
+        GameIdentity.objects.create(game=steam, provider="steam", external_id="1817070")
+        self.assertEqual(game_by_title(local.title), local)
+
+    def test_title_edit_updates_normalized_lookup(self) -> None:
+        game = Game.objects.create(title="Original title")
+        game.title = "Changed: Title"
+        game.save(update_fields=["title"])
+        self.assertEqual(game_by_title("Changed Title"), game)
+
     def test_displayed_times_include_browser_convertible_instants(self) -> None:
         now = timezone.now()
         run = RecommendationRun.objects.create(user=self.user, inputs={}, results=GAMES)
@@ -129,6 +153,157 @@ class AppTests(TestCase):
                 response = self.client.get(url)
                 self.assertContains(response, f'<time datetime="{stamp.isoformat()}"')
                 self.assertContains(response, "/static/app/local-time.js")
+
+    def test_recommendation_art_uses_matching_steam_appid(self) -> None:
+        GameIdentity.objects.create(
+            game=Game.objects.create(title="The Talos Principle"),
+            provider="steam",
+            external_id="257510",
+        )
+        run = RecommendationRun.objects.create(
+            user=self.user,
+            inputs={},
+            results=GAMES + [GAMES[0] | {"title": "Unknown game"}],
+        )
+
+        image = (
+            "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/"
+            "257510/header.jpg"
+        )
+        response = self.client.get(reverse("run", args=[run.pk]))
+
+        self.assertContains(
+            response,
+            image,
+        )
+        self.assertContains(response, "/games/art/257510/")
+        self.assertContains(
+            response,
+            'href="https://store.steampowered.com/app/257510/" '
+            'target="_blank" rel="noopener noreferrer">The Talos Principle</a>',
+        )
+        self.assertContains(response, "onerror=")
+        self.assertContains(response, "Unknown game")
+        self.assertNotContains(response, ">Unknown game</a>")
+        self.assertEqual(
+            response.content.decode().count('class="recommendation-art"'), 1
+        )
+        self.assertNotIn("image_url", run.results[0])
+
+    def test_failed_steam_image_redirects_to_current_artwork(self) -> None:
+        GameIdentity.objects.create(
+            game=Game.objects.create(title="Forza Horizon 6"),
+            provider="steam",
+            external_id="2483190",
+        )
+        image = (
+            "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/"
+            "2483190/hash/header_alt_assets_4.jpg"
+        )
+        with patch("app.views.header_image_url", return_value=image) as lookup:
+            response = self.client.get(reverse("steam_art", args=[2483190]))
+        self.assertRedirects(response, image, fetch_redirect_response=False)
+        lookup.assert_called_once_with("2483190")
+
+        with patch("app.views.header_image_url") as lookup:
+            missing = self.client.get(reverse("steam_art", args=[123456]))
+        self.assertEqual(missing.status_code, 404)
+        lookup.assert_not_called()
+
+    def test_recommendation_art_matches_store_title_variants(self) -> None:
+        for appid, title in (
+            ("632470", "Disco Elysium - The Final Cut"),
+            ("1888930", "The Last of Us™ Part I"),
+            ("2531310", "The Last of Us™ Part II Remastered"),
+            ("1449110", "The Outer Worlds 2"),
+            ("1920490", "The Outer Worlds: Spacer's Choice Edition"),
+            ("1593500", "God of War"),
+            ("356190", "Middle-earth™: Shadow of War™"),
+            ("1817070", "Marvel’s Spider-Man Remastered"),
+        ):
+            GameIdentity.objects.create(
+                game=Game.objects.create(title=title),
+                provider="steam",
+                external_id=appid,
+            )
+        run = RecommendationRun.objects.create(
+            user=self.user,
+            inputs={},
+            results=[
+                GAMES[0] | {"title": "Disco Elysium"},
+                GAMES[0] | {"title": "The Last of Us Part I"},
+                GAMES[0] | {"title": "The Outer Worlds"},
+                GAMES[0] | {"title": "God of War (2018)"},
+                GAMES[0] | {"title": "Middle-earth: Shadow of War"},
+                GAMES[0] | {"title": "Marvel's Spider-Man Remastered"},
+            ],
+        )
+
+        response = self.client.get(reverse("run", args=[run.pk]))
+
+        self.assertContains(response, "/steam/apps/632470/header.jpg")
+        self.assertContains(response, "/steam/apps/1888930/header.jpg")
+        self.assertContains(response, "/steam/apps/1920490/header.jpg")
+        self.assertContains(response, "/steam/apps/1593500/header.jpg")
+        self.assertContains(response, "/steam/apps/356190/header.jpg")
+        self.assertContains(response, "/steam/apps/1817070/header.jpg")
+        run.results = [GAMES[0] | {"title": "The Last of Us"}]
+        self.assertEqual(run.illustrated_results[0]["steam_appid"], "")
+
+    def test_recommendation_art_resolves_titles_in_a_batch(self) -> None:
+        for appid, title in (
+            ("632470", "Disco Elysium - The Final Cut"),
+            ("1888930", "The Last of Us™ Part I"),
+            ("1593500", "God of War"),
+            ("42", "The Complete Edition"),
+        ):
+            GameIdentity.objects.create(
+                game=Game.objects.create(title=title),
+                provider="steam",
+                external_id=appid,
+            )
+        run = RecommendationRun.objects.create(
+            user=self.user,
+            inputs={},
+            results=[
+                GAMES[0] | {"title": "Disco Elysium"},
+                GAMES[0] | {"title": "The Last of Us Part I"},
+                GAMES[0] | {"title": "God of War (2018)"},
+                GAMES[0] | {"title": "Unknown game"},
+                GAMES[0] | {"title": "The"},
+            ],
+        )
+        with CaptureQueriesContext(connection) as queries:
+            appids = [result["steam_appid"] for result in run.illustrated_results]
+        self.assertEqual(len(queries), 2)
+        self.assertEqual(appids, ["632470", "1888930", "1593500", "", ""])
+        with connection.cursor() as cursor:
+            cursor.execute("EXPLAIN QUERY PLAN " + queries[0]["sql"])
+            plan = " ".join(row[3] for row in cursor.fetchall())
+        self.assertIn("USING INDEX", plan)
+        self.assertNotIn("SCAN app_game", plan)
+
+    def test_replay_art_prefers_the_owned_steam_app_when_titles_duplicate(self) -> None:
+        owned_game = Game.objects.create(title="Fallout: New Vegas")
+        GameIdentity.objects.create(
+            game=owned_game, provider="steam", external_id="22380"
+        )
+        GameIdentity.objects.create(
+            game=Game.objects.create(title="Fallout: New Vegas"),
+            provider="steam",
+            external_id="22490",
+        )
+        account = LinkedAccount.objects.create(
+            user=self.user, provider="steam", external_user_id="123"
+        )
+        Ownership.objects.create(account=account, game=owned_game)
+        run = RecommendationRun.objects.create(
+            user=self.user,
+            inputs={},
+            results=[GAMES[0] | {"title": "Fallout: New Vegas", "category": "replay"}],
+        )
+
+        self.assertEqual(run.illustrated_results[0]["steam_appid"], "22380")
 
     def test_recommendation_calls_provider_in_request_with_only_own_taste(self) -> None:
         Preference.objects.create(
@@ -474,9 +649,9 @@ class AppTests(TestCase):
         self.assertEqual(
             [(pick["category"], pick["title"]) for pick in picks],
             [
-                ("replay", "Portal 2"),
-                ("backlog", "Backlog game"),
                 ("discover", "New game"),
+                ("backlog", "Backlog game"),
+                ("replay", "Portal 2"),
             ],
         )
         with patch("app.recommendations.ask_provider", return_value=picks) as ask:
@@ -486,11 +661,22 @@ class AppTests(TestCase):
             [{"game": "Portal 2", "feeling": "loved", "reason": "Clever puzzles"}],
         )
         self.assertEqual(ask.call_args.kwargs["owned"], owned)
+        run.results.reverse()  # Older saved runs may have the opposite order.
+        run.save(update_fields=["results"])
         page = self.client.get(reverse("run", args=[run.pk]))
         self.assertContains(page, "Your picks")
         self.assertContains(page, "Favourites to revisit")
         self.assertContains(page, "Games you haven't played yet")
-        self.assertContains(page, "Games you might like")
+        self.assertContains(page, "New games to try")
+        html = page.content.decode()
+        self.assertLess(
+            html.index("New games to try"),
+            html.index("Games you haven't played yet"),
+        )
+        self.assertLess(
+            html.index("Games you haven't played yet"),
+            html.index("Favourites to revisit"),
+        )
         home = self.client.get(reverse("home"))
         self.assertContains(home, "Latest picks")
         self.assertContains(home, 'class="has-picks"')
@@ -547,7 +733,7 @@ class AppTests(TestCase):
                 lambda request: httpx.Response(200, json=response)
             ),
         )
-        self.assertEqual(result, games[:9])
+        self.assertEqual(result, games[6:9] + games[3:6] + games[:3])
 
     def test_recommender_rejects_fewer_than_five_discovery_candidates(self) -> None:
         response = {

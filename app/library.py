@@ -4,7 +4,14 @@ from django.db import transaction
 from django.utils import timezone
 
 from . import steam
-from .models import CatalogueState, Game, GameIdentity, LinkedAccount, Ownership
+from .models import (
+    CatalogueState,
+    Game,
+    GameIdentity,
+    LinkedAccount,
+    Ownership,
+    normalize_title,
+)
 
 PROVIDERS = {"steam": steam}
 
@@ -64,7 +71,12 @@ def refresh_catalogue(provider: str = "steam") -> None:
                 for external_id, title in page.items()
                 if external_id not in known
             ]
-            games = Game.objects.bulk_create([Game(title=title) for _, title in new])
+            games = Game.objects.bulk_create(
+                [
+                    Game(title=title, normalized_title=normalize_title(title))
+                    for _, title in new
+                ]
+            )
             GameIdentity.objects.bulk_create(
                 [
                     GameIdentity(game=game, provider=provider, external_id=external_id)

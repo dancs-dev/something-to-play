@@ -2,14 +2,69 @@
 
 from unittest.mock import patch
 
+from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.contrib.staticfiles.testing import StaticLiveServerTestCase
 from django.test import override_settings
 
+from app.models import Game, GameIdentity, RecommendationRun
 from app.tests.test_app import GAMES
 
 
 @override_settings(ALLOWED_HOSTS=["localhost", "testserver"])
 class BrowserSmoke(StaticLiveServerTestCase):
+    def test_broken_art_uses_steam_fallback(self) -> None:
+        from playwright.sync_api import sync_playwright
+
+        user = get_user_model().objects.create_user("art-viewer")
+        self.client.force_login(user)
+        GameIdentity.objects.create(
+            game=Game.objects.create(title="Forza Horizon 6"),
+            provider="steam",
+            external_id="2483190",
+        )
+        run = RecommendationRun.objects.create(
+            user=user,
+            inputs={},
+            results=[GAMES[0] | {"title": "Forza Horizon 6", "category": "discover"}],
+        )
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch()
+            context = browser.new_context()
+            context.add_cookies(
+                [
+                    {
+                        "name": settings.SESSION_COOKIE_NAME,
+                        "value": self.client.cookies[
+                            settings.SESSION_COOKIE_NAME
+                        ].value,
+                        "url": self.live_server_url,
+                    }
+                ]
+            )
+            page = context.new_page()
+            page.route("**/2483190/header.jpg", lambda route: route.fulfill(status=404))
+            page.route(
+                "**/games/art/2483190/",
+                lambda route: route.fulfill(
+                    status=200,
+                    content_type="image/svg+xml",
+                    body=(
+                        '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>'
+                    ),
+                ),
+            )
+            page.goto(self.live_server_url + f"/runs/{run.pk}/")
+            page.wait_for_function(
+                "document.querySelector('.recommendation-art')?.naturalWidth > 0",
+                timeout=5000,
+            )
+            self.assertEqual(
+                page.locator(".recommendation-art").get_attribute("src"),
+                "/games/art/2483190/",
+            )
+            browser.close()
+
     def test_taste_to_direct_ai_request_and_feedback(self) -> None:
         from playwright.sync_api import sync_playwright
 

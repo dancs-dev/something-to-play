@@ -16,17 +16,20 @@ from app.models import (
     Ownership,
     Preference,
 )
-from app.steam import SteamError, catalogue_pages, owned_games, resolve_profile
-
-
-@override_settings(
-    STEAM_WEB_API_KEY="test-key",
-    PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"],
+from app.steam import (
+    SteamError,
+    catalogue_pages,
+    header_image_url,
+    owned_games,
+    resolve_profile,
 )
+
+
+@override_settings(STEAM_WEB_API_KEY="test-key")
 class SteamTests(TestCase):
     def setUp(self) -> None:
-        self.user = get_user_model().objects.create_user("alice", password="pw")
-        self.other = get_user_model().objects.create_user("bob", password="pw")
+        self.user = get_user_model().objects.create_user("alice")
+        self.other = get_user_model().objects.create_user("bob")
         self.account = LinkedAccount.objects.create(
             user=self.user, provider="steam", external_user_id="1234567890"
         )
@@ -104,6 +107,38 @@ class SteamTests(TestCase):
             [request.url.params["if_modified_since"] for request in requests[4:]],
             ["42", "42"],
         )
+
+    def test_header_image_url_uses_current_store_asset_and_caches_it(self) -> None:
+        image = (
+            "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/"
+            "2483190/hash/header_alt_assets_4.jpg"
+        )
+        requests = []
+
+        def respond(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
+            return httpx.Response(
+                200,
+                json={"2483190": {"success": True, "data": {"header_image": image}}},
+            )
+
+        transport = httpx.MockTransport(respond)
+        self.assertEqual(header_image_url("2483190", transport=transport), image)
+        self.assertEqual(header_image_url("2483190", transport=transport), image)
+        self.assertEqual(len(requests), 1)
+        self.assertEqual(requests[0].url.params["appids"], "2483190")
+
+        bad = httpx.MockTransport(
+            lambda request: httpx.Response(
+                200,
+                json={
+                    "2483191": {
+                        "data": {"header_image": "https://example.com/other.jpg"}
+                    }
+                },
+            )
+        )
+        self.assertEqual(header_image_url("2483191", transport=bad), "")
 
     def test_bare_custom_url_name_links_steam_profile(self) -> None:
         with patch(

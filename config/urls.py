@@ -26,6 +26,7 @@ urlpatterns = [
         name="preference_delete",
     ),
     path("games/search/", views.GameSearchView.as_view(), name="game_search"),
+    path("games/art/<int:appid>/", views.SteamArtView.as_view(), name="steam_art"),
     path(
         "games/catalogue/refresh/",
         views.CatalogueRefreshView.as_view(),

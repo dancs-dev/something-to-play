@@ -3,13 +3,14 @@
   {% if run %}
     <h2>{% if request.resolver_match.url_name == 'run' %}Your picks{% else %}Latest picks{% endif %}</h2>
     <p class="muted"><time datetime="{{ run.created_at|date:'c' }}" data-local-time="short">{{ run.created_at|date:'M j, H:i' }} UTC</time> | {% if run.inputs.model %}AI suggestions based on the games you've rated.{% else %}Saved picks.{% endif %}</p>
-    {% regroup run.results by category as result_groups %}
+    {% regroup run.illustrated_results by category as result_groups %}
     {% for group in result_groups %}
-      <h3>{% if group.grouper == 'replay' %}Favourites to revisit{% elif group.grouper == 'backlog' %}Games you haven't played yet{% else %}Games you might like{% endif %}</h3>
+      <h3>{% if group.grouper == 'replay' %}Favourites to revisit{% elif group.grouper == 'backlog' %}Games you haven't played yet{% else %}New games to try{% endif %}</h3>
       <div class="grid recommendations">
       {% for result in group.list %}
         <article class="card">
-          <h3>{{ result.title }}</h3>
+          {% if result.image_url %}<img class="recommendation-art" src="{{ result.image_url }}" alt="" loading="lazy" width="460" height="215" onerror="this.onerror=()=>this.remove();this.src='{% url 'steam_art' result.steam_appid %}'">{% endif %}
+          <h3>{% if result.steam_appid %}<a href="https://store.steampowered.com/app/{{ result.steam_appid }}/" target="_blank" rel="noopener noreferrer">{{ result.title }}</a>{% else %}{{ result.title }}{% endif %}</h3>
           <p>{{ result.rationale }}</p>
           <p class="drawback"><strong>You might not enjoy:</strong> {{ result.drawback }}</p>
           {% if group.grouper != 'replay' %}
