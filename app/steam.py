@@ -89,7 +89,7 @@ def owned_games(
     if not isinstance(response, dict) or type(response.get("game_count")) is not int:
         raise SteamError(
             "Steam did not return a visible game library. "
-            "Check the profile’s game details privacy setting."
+            "Check the profile's game details privacy setting."
         )
     if response["game_count"] == 0 and "games" not in response:
         response["games"] = []

@@ -25,6 +25,7 @@ GAMES = [
         "drawback": "The philosophical story may be slower than you want.",
     }
 ]
+DISCOVERY_GAMES = GAMES + [GAMES[0] | {"title": f"New game {n}"} for n in range(4)]
 
 
 @override_settings(PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"])
@@ -146,6 +147,7 @@ class AppTests(TestCase):
             [{"game": "Portal 2", "feeling": "like", "reason": "Clever puzzles"}],
             "Something relaxing",
             owned={"replay": [], "backlog": [], "all": [], "known": ["Portal 2"]},
+            recent_recommendations=[],
         )
         self.assertContains(response, "The Talos Principle")
         self.assertContains(
@@ -266,13 +268,31 @@ class AppTests(TestCase):
             self.assertEqual(payload["reasoning_effort"], "none")
             self.assertEqual(payload["max_tokens"], 1234)
             self.assertIn("Clever puzzles", payload["messages"][1]["content"])
+            request_data = json.loads(payload["messages"][1]["content"])
+            self.assertEqual(
+                request_data["excluded_discovery_titles"],
+                ["Portal 2", "Owned only", "Known only"],
+            )
+            self.assertNotIn("owned_titles", request_data)
+            self.assertNotIn("known_titles", request_data)
+            self.assertIn(
+                "Discover must contain five games", payload["messages"][0]["content"]
+            )
             return httpx.Response(
                 200,
                 json={
                     "choices": [
                         {
                             "finish_reason": "stop",
-                            "message": {"content": json.dumps({"games": GAMES})},
+                            "message": {
+                                "content": json.dumps(
+                                    {
+                                        "replay": [],
+                                        "backlog": [],
+                                        "discover": DISCOVERY_GAMES,
+                                    }
+                                )
+                            },
                         }
                     ]
                 },
@@ -286,8 +306,17 @@ class AppTests(TestCase):
             OPENAI_COMPATIBLE_MAX_TOKENS=1234,
         ):
             self.assertEqual(
-                ask_provider(taste, transport=httpx.MockTransport(respond)),
-                [GAMES[0] | {"category": "discover"}],
+                ask_provider(
+                    taste,
+                    owned={
+                        "replay": [],
+                        "backlog": [],
+                        "all": ["Portal 2", "Owned only"],
+                        "known": ["Portal 2", "Known only"],
+                    },
+                    transport=httpx.MockTransport(respond),
+                ),
+                [game | {"category": "discover"} for game in DISCOVERY_GAMES[:3]],
             )
 
     def test_adapter_rejects_invalid_truncated_and_overlong_output(self) -> None:
@@ -306,7 +335,30 @@ class AppTests(TestCase):
                         "finish_reason": "stop",
                         "message": {
                             "content": json.dumps(
-                                {"games": [GAMES[0] | {"title": "x" * 201}]}
+                                {
+                                    "replay": [],
+                                    "backlog": [],
+                                    "discover": [
+                                        GAMES[0] | {"title": "x" * 201},
+                                        *DISCOVERY_GAMES[1:],
+                                    ],
+                                }
+                            )
+                        },
+                    }
+                ]
+            },
+            {
+                "choices": [
+                    {
+                        "finish_reason": "stop",
+                        "message": {
+                            "content": json.dumps(
+                                {
+                                    "replay": [GAMES[0]] * 4,
+                                    "backlog": [],
+                                    "discover": DISCOVERY_GAMES,
+                                }
                             )
                         },
                     }
@@ -333,17 +385,24 @@ class AppTests(TestCase):
             ask_provider([], transport=httpx.MockTransport(timeout))
 
     def test_adapter_omits_duplicates_and_already_known_games(self) -> None:
-        games = [GAMES[0], GAMES[0], GAMES[0] | {"title": "Portal 2"}]
+        games = [GAMES[0], GAMES[0]] + [
+            GAMES[0] | {"title": "Portal 2"} for _ in range(3)
+        ]
         response = {
             "choices": [
                 {
                     "finish_reason": "stop",
-                    "message": {"content": json.dumps({"games": games})},
+                    "message": {
+                        "content": json.dumps(
+                            {"replay": [], "backlog": [], "discover": games}
+                        )
+                    },
                 }
             ]
         }
         result = ask_provider(
             [{"game": "portal 2"}],
+            recent_recommendations=["The Talos Principle"],
             transport=httpx.MockTransport(
                 lambda request: httpx.Response(200, json=response)
             ),
@@ -373,6 +432,8 @@ class AppTests(TestCase):
             {"category": "discover", "title": "Ignored game"},
             {"category": "replay", "title": "Unknown owned game"},
             {"category": "discover", "title": "New game"},
+            {"category": "discover", "title": "Portal 2"},
+            {"category": "discover", "title": "Ignored game"},
         ]
         response = {
             "choices": [
@@ -381,14 +442,16 @@ class AppTests(TestCase):
                     "message": {
                         "content": json.dumps(
                             {
-                                "games": [
-                                    suggestion
-                                    | {
+                                category: [
+                                    {
+                                        "title": suggestion["title"],
                                         "rationale": "Fits your taste",
                                         "drawback": "May be slow",
                                     }
                                     for suggestion in suggestions
-                                ],
+                                    if suggestion["category"] == category
+                                ]
+                                for category in ("replay", "backlog", "discover")
                             }
                         )
                     },
@@ -452,13 +515,28 @@ class AppTests(TestCase):
                 ("backlog", "Backlog"),
                 ("discover", "New"),
             )
-            for n in range(3)
+            for n in range(5 if category == "discover" else 3)
         ]
         response = {
             "choices": [
                 {
                     "finish_reason": "stop",
-                    "message": {"content": json.dumps({"games": games})},
+                    "message": {
+                        "content": json.dumps(
+                            {
+                                category: [
+                                    {
+                                        key: value
+                                        for key, value in game.items()
+                                        if key != "category"
+                                    }
+                                    for game in games
+                                    if game["category"] == category
+                                ]
+                                for category in ("replay", "backlog", "discover")
+                            }
+                        )
+                    },
                 }
             ]
         }
@@ -469,4 +547,30 @@ class AppTests(TestCase):
                 lambda request: httpx.Response(200, json=response)
             ),
         )
-        self.assertEqual(result, games)
+        self.assertEqual(result, games[:9])
+
+    def test_recommender_rejects_fewer_than_five_discovery_candidates(self) -> None:
+        response = {
+            "choices": [
+                {
+                    "finish_reason": "stop",
+                    "message": {
+                        "content": json.dumps(
+                            {
+                                "replay": [GAMES[0] | {"title": "Portal 2"}],
+                                "backlog": [],
+                                "discover": [],
+                            }
+                        )
+                    },
+                }
+            ]
+        }
+        with self.assertRaises(RecommendationError):
+            ask_provider(
+                [],
+                owned={"replay": ["Portal 2"], "backlog": [], "all": [], "known": []},
+                transport=httpx.MockTransport(
+                    lambda request: httpx.Response(200, json=response)
+                ),
+            )

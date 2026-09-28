@@ -74,6 +74,7 @@ class BrowserSmoke(StaticLiveServerTestCase):
                 [{"game": "Portal 2", "feeling": "like", "reason": "Clever puzzles"}],
                 "Something relaxing",
                 owned={"replay": [], "backlog": [], "all": [], "known": ["Portal 2"]},
+                recent_recommendations=[],
             )
             self.assertEqual(
                 page.url.rstrip("/"), self.live_server_url
