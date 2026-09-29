@@ -191,6 +191,36 @@ class AppTests(TestCase):
         )
         self.assertNotIn("image_url", run.results[0])
 
+    def test_ambiguous_edition_art_uses_first_match(self) -> None:
+        for appid, title in (
+            ("55150", "Warhammer 40,000: Space Marine - Anniversary Edition"),
+            ("3169520", "Warhammer 40,000: Space Marine - Master Crafted Edition"),
+        ):
+            GameIdentity.objects.create(
+                game=Game.objects.create(title=title),
+                provider="steam",
+                external_id=appid,
+            )
+        run = RecommendationRun.objects.create(
+            user=self.user,
+            inputs={},
+            results=[
+                GAMES[0]
+                | {"title": "Warhammer 40,000: Space Marine", "category": "discover"},
+                GAMES[0]
+                | {"title": "Warhammer 40,000: Space Marine", "category": "backlog"},
+            ],
+        )
+
+        self.assertEqual(
+            [result["steam_appid"] for result in run.illustrated_results],
+            ["55150", "55150"],
+        )
+        self.assertContains(
+            self.client.get(reverse("run", args=[run.pk])),
+            "/steam/apps/55150/header.jpg",
+        )
+
     def test_failed_steam_image_redirects_to_current_artwork(self) -> None:
         GameIdentity.objects.create(
             game=Game.objects.create(title="Forza Horizon 6"),

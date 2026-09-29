@@ -141,8 +141,15 @@ def _steam_appids_for_titles(titles: list[str]) -> dict[str, list[str]]:
         if " " in key:
             lookup |= Q(normalized_title__gte=key + " ", normalized_title__lt=key + "!")
     candidates: dict[str, list[str]] = defaultdict(list)
-    games = Game.objects.filter(lookup).prefetch_related(
-        Prefetch("identities", queryset=GameIdentity.objects.filter(provider="steam"))
+    games = (
+        Game.objects.filter(lookup)
+        .order_by("pk")
+        .prefetch_related(
+            Prefetch(
+                "identities",
+                queryset=GameIdentity.objects.filter(provider="steam").order_by("pk"),
+            )
+        )
     )
     for game in games:
         candidates[game.normalized_title].extend(
@@ -223,8 +230,8 @@ class RecommendationRun(models.Model):
             title = result.get("title", "")
             appids = matches[title]
             if len(appids) > 1 and result.get("category") in {"replay", "backlog"}:
-                appids = [appid for appid in appids if appid in owned]
-            appid = appids[0] if len(appids) == 1 else ""
+                appids = [appid for appid in appids if appid in owned] or appids
+            appid = appids[0] if appids else ""
             valid_appid = (
                 appid if appid and appid.isascii() and appid.isdecimal() else ""
             )
