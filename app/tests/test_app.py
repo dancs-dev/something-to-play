@@ -321,7 +321,12 @@ class AppTests(TestCase):
         ask.assert_called_once_with(
             [{"game": "Portal 2", "feeling": "like", "reason": "Clever puzzles"}],
             "Something relaxing",
-            owned={"replay": [], "backlog": [], "all": [], "known": ["Portal 2"]},
+            owned={
+                "replay": ["Portal 2"],
+                "backlog": [],
+                "all": [],
+                "known": ["Portal 2"],
+            },
             recent_recommendations=[],
         )
         self.assertContains(response, "The Talos Principle")
@@ -680,6 +685,18 @@ class AppTests(TestCase):
         home = self.client.get(reverse("home"))
         self.assertContains(home, "Latest picks")
         self.assertContains(home, 'class="has-picks"')
+
+    def test_manually_added_games_are_replay_and_backlog_candidates(self) -> None:
+        backlog = Game.objects.create(title="Family-shared backlog")
+        dislike = Game.objects.create(title="Disliked game")
+        Preference.objects.create(user=self.user, game=backlog, sentiment=-2)
+        Preference.objects.create(user=self.user, game=dislike, sentiment=-1)
+        with patch("app.recommendations.ask_provider", return_value=[]) as ask:
+            create_run(self.user)
+        self.assertEqual(ask.call_args.kwargs["owned"]["replay"], ["Portal 2"])
+        self.assertEqual(
+            ask.call_args.kwargs["owned"]["backlog"], ["Family-shared backlog"]
+        )
 
     def test_recommender_accepts_three_picks_in_each_group(self) -> None:
         owned = {

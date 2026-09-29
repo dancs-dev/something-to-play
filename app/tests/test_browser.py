@@ -128,7 +128,12 @@ class BrowserSmoke(StaticLiveServerTestCase):
             ask.assert_called_once_with(
                 [{"game": "Portal 2", "feeling": "like", "reason": "Clever puzzles"}],
                 "Something relaxing",
-                owned={"replay": [], "backlog": [], "all": [], "known": ["Portal 2"]},
+                owned={
+                    "replay": ["Portal 2"],
+                    "backlog": [],
+                    "all": [],
+                    "known": ["Portal 2"],
+                },
                 recent_recommendations=[],
             )
             self.assertEqual(

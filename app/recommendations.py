@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from .models import Ownership, Preference, RecommendationRun
 
-PROMPT_VERSION = "grouped-recommendations-v5"
+PROMPT_VERSION = "grouped-recommendations-v6"
 PROMPT = "\n".join(
     (
         "Suggest games using the player's ratings and reasons. Loved is a much "
@@ -34,14 +34,14 @@ PROMPT = "\n".join(
         "player's tastes. Do not describe input lists, field names, rating records, "
         "recent recommendation history, or the selection process; avoid phrases like "
         "'you explicitly listed this game'.",
-        "Return three replay picks if owned_liked has at least three games; "
-        "otherwise return every game in owned_liked. Do the same for backlog "
-        "using owned_not_played. Use an empty array only when its candidate "
+        "Return three replay picks if liked_games has at least three games; "
+        "otherwise return every game in liked_games. Do the same for backlog "
+        "using not_played_games. Use an empty array only when its candidate "
         "list is empty.",
-        "Replay titles must be copied exactly from owned_liked. Backlog titles must be "
-        "copied exactly from owned_not_played. Discovery titles must not appear in "
-        "excluded_discovery_titles. Never claim a game is "
-        "owned unless it is in the relevant candidate list.",
+        "Replay titles must be copied exactly from liked_games. Backlog titles must be "
+        "copied exactly from not_played_games. Discovery titles must not appear in "
+        "excluded_discovery_titles. Do not claim a game is owned just because it is "
+        "in a candidate list.",
         "Recommend real game titles. Do not invent current prices, compatibility "
         "claims, "
         "or claim to have searched the web.",
@@ -108,8 +108,8 @@ def ask_provider(
                             {
                                 "taste": taste,
                                 "request": context,
-                                "owned_liked": owned["replay"][:100],
-                                "owned_not_played": owned["backlog"][:100],
+                                "liked_games": owned["replay"][:100],
+                                "not_played_games": owned["backlog"][:100],
                                 "excluded_discovery_titles": list(
                                     dict.fromkeys(
                                         owned["all"][:200] + owned["known"][:200]
@@ -283,18 +283,9 @@ def create_run(user: User, context: str = "") -> RecommendationRun:
         .values_list("game__title", flat=True)
         .distinct()
     )
-    owned_keys = {title.casefold() for title in owned_titles}
     owned = {
-        "replay": [
-            p.game.title
-            for p in preferences
-            if p.sentiment in {1, 2} and p.game.title.casefold() in owned_keys
-        ],
-        "backlog": [
-            p.game.title
-            for p in preferences
-            if p.sentiment == -2 and p.game.title.casefold() in owned_keys
-        ],
+        "replay": [p.game.title for p in preferences if p.sentiment in {1, 2}],
+        "backlog": [p.game.title for p in preferences if p.sentiment == -2],
         "all": owned_titles,
         "known": [p.game.title for p in preferences],
     }
