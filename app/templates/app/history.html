@@ -4,6 +4,21 @@
   <p class="eyebrow">YOUR SAVED PICKS</p>
   <h1>Past picks</h1>
   <p class="lead">Earlier picks are saved here, along with any note you added.</p>
+  {% if dismissed %}
+    <section class="panel library-section">
+      <h2>Hidden suggestions <span class="muted">{{ dismissed|length }}</span></h2>
+      <p class="muted">These games won't appear in future discovery picks.</p>
+      {% for item in dismissed %}
+        <article class="preference library-item">
+          <h3>{{ item.game.title }}</h3>
+          <form method="post" action="{% url 'undo_dismissal' item.pk %}">
+            {% csrf_token %}
+            <button class="quiet">Undo</button>
+          </form>
+        </article>
+      {% endfor %}
+    </section>
+  {% endif %}
   <section class="panel">
     {% for run in runs %}
       <p><a href="{% url 'run' run.pk %}"><time datetime="{{ run.created_at|date:'c' }}" data-local-time>{{ run.created_at|date:'M j, Y H:i' }} UTC</time></a>{% if run.inputs.request %} | {{ run.inputs.request }}{% endif %}</p>

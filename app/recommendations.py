@@ -7,7 +7,13 @@ from django.conf import settings
 from django.contrib.auth.models import User
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from .models import Ownership, Preference, RecommendationRun
+from .models import (
+    DismissedSuggestion,
+    Ownership,
+    Preference,
+    RecommendationRun,
+    normalize_title,
+)
 
 PROMPT_VERSION = "grouped-recommendations-v6"
 PROMPT = "\n".join(
@@ -112,7 +118,9 @@ def ask_provider(
                                 "not_played_games": owned["backlog"][:100],
                                 "excluded_discovery_titles": list(
                                     dict.fromkeys(
-                                        owned["all"][:200] + owned["known"][:200]
+                                        owned["all"][:200]
+                                        + owned["known"][:200]
+                                        + owned.get("dismissed", [])[:200]
                                     )
                                 ),
                                 "recent_recommendations": recent_recommendations,
@@ -178,6 +186,7 @@ def ask_provider(
     }
 
     blocked = {title.casefold() for title in owned["all"] + owned["known"]}
+    dismissed = {normalize_title(title) for title in owned.get("dismissed", [])}
 
     blocked.update(entry["game"].strip().casefold() for entry in taste)
 
@@ -202,7 +211,7 @@ def ask_provider(
                 continue
 
             if category == "discover":
-                if key in blocked:
+                if key in blocked or normalize_title(title) in dismissed:
                     continue
             elif key not in allowed[category]:
                 continue
@@ -288,6 +297,11 @@ def create_run(user: User, context: str = "") -> RecommendationRun:
         "backlog": [p.game.title for p in preferences if p.sentiment == -2],
         "all": owned_titles,
         "known": [p.game.title for p in preferences],
+        "dismissed": list(
+            DismissedSuggestion.objects.filter(user=user).values_list(
+                "game__title", flat=True
+            )
+        ),
     }
 
     recent_recommendations = get_recent_recommendations(user=user)

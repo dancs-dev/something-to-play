@@ -21,6 +21,18 @@
               <a href="{% url 'game_search' %}?query={{ result.title|urlencode }}&amp;feeling=dislike">Disliked it</a>
             </div>
           {% endif %}
+          {% if group.grouper == 'discover' %}
+            <form method="post" action="{% url 'dismiss_suggestion' run.pk %}">
+              {% csrf_token %}
+              <input type="hidden" name="title" value="{{ result.title }}">
+              {% if result.dismissed %}
+                <span class="muted">Not interested.</span>
+                <button class="quiet" name="action" value="undo">Undo</button>
+              {% else %}
+                <button class="quiet" name="action" value="dismiss">Not interested</button>
+              {% endif %}
+            </form>
+          {% endif %}
         </article>
       {% endfor %}
       </div>

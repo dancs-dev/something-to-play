@@ -29,6 +29,7 @@ from .forms import GameSearchForm, PreferenceForm, RecommendationForm, SteamLink
 from .library import refresh_catalogue, sync_account
 from .models import (
     CatalogueState,
+    DismissedSuggestion,
     Game,
     GameIdentity,
     LinkedAccount,
@@ -289,6 +290,38 @@ class RunDetailView(LoginRequiredMixin, DetailView):
         return RecommendationRun.objects.filter(user=_authenticated_user(self.request))
 
 
+class DismissSuggestionView(LoginRequiredMixin, View):
+    http_method_names = ["post"]
+
+    def post(self, request: HttpRequest, pk: int) -> HttpResponse:
+        run = get_object_or_404(
+            RecommendationRun, pk=pk, user=_authenticated_user(request)
+        )
+        title = request.POST.get("title", "")
+        action = request.POST.get("action")
+        if (
+            not title.strip()
+            or len(title) > 200
+            or action not in {"dismiss", "undo"}
+            or not any(
+                item.get("category") == "discover" and item.get("title") == title
+                for item in run.results
+            )
+        ):
+            raise Http404
+
+        if action == "dismiss":
+            DismissedSuggestion.objects.get_or_create(
+                user=_authenticated_user(request), game=find_game(title)
+            )
+        else:
+            DismissedSuggestion.objects.filter(
+                user=_authenticated_user(request),
+                game__normalized_title=normalize_title(title),
+            ).delete()
+        return redirect("run", pk=run.pk)
+
+
 class HistoryView(LoginRequiredMixin, TemplateView):
     template_name = "app/history.html"
 
@@ -297,8 +330,24 @@ class HistoryView(LoginRequiredMixin, TemplateView):
             runs=RecommendationRun.objects.filter(
                 user=_authenticated_user(self.request)
             ).order_by("-created_at")[:50],
+            dismissed=DismissedSuggestion.objects.filter(
+                user=_authenticated_user(self.request)
+            )
+            .select_related("game")
+            .order_by("game__title"),
             **kwargs,
         )
+
+
+class UndoDismissalView(LoginRequiredMixin, View):
+    http_method_names = ["post"]
+
+    def post(self, request: HttpRequest, pk: int) -> HttpResponse:
+        dismissal = get_object_or_404(
+            DismissedSuggestion, pk=pk, user=_authenticated_user(request)
+        )
+        dismissal.delete()
+        return redirect("history")
 
 
 class GameSearchView(LoginRequiredMixin, TemplateView):

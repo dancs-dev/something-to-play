@@ -12,6 +12,7 @@ from django.utils import timezone
 
 from app.models import (
     CatalogueState,
+    DismissedSuggestion,
     Game,
     GameIdentity,
     LinkedAccount,
@@ -326,6 +327,7 @@ class AppTests(TestCase):
                 "backlog": [],
                 "all": [],
                 "known": ["Portal 2"],
+                "dismissed": [],
             },
             recent_recommendations=[],
         )
@@ -409,6 +411,84 @@ class AppTests(TestCase):
         self.assertEqual(
             Preference.objects.count(), 2
         )  # Prefill waits for the user's reason and save.
+
+    def test_discovery_dismissal_and_undo_from_past_run(self) -> None:
+        run = RecommendationRun.objects.create(
+            user=self.user,
+            inputs={},
+            results=[
+                GAMES[0] | {"category": "discover"},
+                GAMES[0] | {"title": "Portal 2", "category": "replay"},
+            ],
+        )
+        url = reverse("dismiss_suggestion", args=[run.pk])
+        self.assertContains(
+            self.client.get(reverse("run", args=[run.pk])), "Not interested"
+        )
+        self.assertEqual(
+            self.client.post(
+                url, {"title": "Portal 2", "action": "dismiss"}
+            ).status_code,
+            404,
+        )
+        self.client.post(url, {"title": "The Talos Principle", "action": "dismiss"})
+        self.assertEqual(DismissedSuggestion.objects.filter(user=self.user).count(), 1)
+        self.assertEqual(Preference.objects.filter(user=self.user).count(), 1)
+        self.assertNotContains(
+            self.client.get(reverse("library")), "The Talos Principle"
+        )
+        self.assertContains(
+            self.client.get(reverse("run", args=[run.pk])), "Not interested."
+        )
+        self.assertContains(self.client.get(reverse("run", args=[run.pk])), "Undo")
+
+        with patch("app.recommendations.ask_provider", return_value=[]) as ask:
+            create_run(self.user)
+        self.assertEqual(
+            ask.call_args.kwargs["owned"]["dismissed"], ["The Talos Principle"]
+        )
+
+        self.client.force_login(self.other)
+        self.assertEqual(
+            self.client.post(
+                url, {"title": "The Talos Principle", "action": "undo"}
+            ).status_code,
+            404,
+        )
+        self.client.force_login(self.user)
+        self.client.post(url, {"title": "The Talos Principle", "action": "undo"})
+        self.assertFalse(DismissedSuggestion.objects.filter(user=self.user).exists())
+        self.assertNotContains(
+            self.client.get(reverse("run", args=[run.pk])), "Not interested."
+        )
+
+    def test_hidden_suggestions_can_be_undone_without_finding_a_run(self) -> None:
+        dismissal = DismissedSuggestion.objects.create(
+            user=self.user, game=Game.objects.create(title="A hidden game")
+        )
+        other_dismissal = DismissedSuggestion.objects.create(
+            user=self.other, game=Game.objects.create(title="Private hidden game")
+        )
+        history = self.client.get(reverse("history"))
+        self.assertContains(history, "Hidden suggestions")
+        self.assertContains(history, "A hidden game")
+        self.assertNotContains(history, "Private hidden game")
+
+        self.assertEqual(
+            self.client.post(
+                reverse("undo_dismissal", args=[other_dismissal.pk])
+            ).status_code,
+            404,
+        )
+        self.assertRedirects(
+            self.client.post(reverse("undo_dismissal", args=[dismissal.pk])),
+            reverse("history"),
+        )
+        self.assertFalse(DismissedSuggestion.objects.filter(pk=dismissal.pk).exists())
+        self.assertTrue(
+            DismissedSuggestion.objects.filter(pk=other_dismissal.pk).exists()
+        )
+        self.assertNotContains(self.client.get(reverse("history")), "A hidden game")
 
     def test_invalid_input_and_csrf(self) -> None:
         with patch("app.recommendations.ask_provider") as ask:
@@ -589,6 +669,46 @@ class AppTests(TestCase):
         )
         self.assertEqual(result, [GAMES[0] | {"category": "discover"}])
 
+    def test_dismissed_titles_reach_provider_and_are_filtered(self) -> None:
+        def respond(request: httpx.Request) -> httpx.Response:
+            data = json.loads(json.loads(request.content)["messages"][1]["content"])
+            self.assertIn("The Talos Principle", data["excluded_discovery_titles"])
+            return httpx.Response(
+                200,
+                json={
+                    "choices": [
+                        {
+                            "finish_reason": "stop",
+                            "message": {
+                                "content": json.dumps(
+                                    {
+                                        "replay": [],
+                                        "backlog": [],
+                                        "discover": DISCOVERY_GAMES,
+                                    }
+                                )
+                            },
+                        }
+                    ]
+                },
+            )
+
+        picks = ask_provider(
+            [],
+            owned={
+                "replay": [],
+                "backlog": [],
+                "all": [],
+                "known": [],
+                "dismissed": ["The Talos Principle"],
+            },
+            transport=httpx.MockTransport(respond),
+        )
+        self.assertEqual(
+            [pick["title"] for pick in picks],
+            ["New game 0", "New game 1", "New game 2"],
+        )
+
     def test_owned_picks_are_verified_and_loved_is_a_strong_signal(self) -> None:
         account = LinkedAccount.objects.create(
             user=self.user, provider="steam", external_user_id="123"
@@ -643,6 +763,7 @@ class AppTests(TestCase):
             "backlog": ["Backlog game"],
             "all": ["Backlog game", "Ignored game", "Portal 2"],
             "known": ["Ignored game", "Backlog game", "Portal 2"],
+            "dismissed": [],
         }
         picks = ask_provider(
             [{"game": "Portal 2", "feeling": "loved", "reason": "Clever puzzles"}],

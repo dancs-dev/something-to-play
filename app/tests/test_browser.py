@@ -133,6 +133,7 @@ class BrowserSmoke(StaticLiveServerTestCase):
                     "backlog": [],
                     "all": [],
                     "known": ["Portal 2"],
+                    "dismissed": [],
                 },
                 recent_recommendations=[],
             )

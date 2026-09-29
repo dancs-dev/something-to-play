@@ -43,5 +43,15 @@ urlpatterns = [
     ),
     path("recommend/", views.RecommendationView.as_view(), name="recommend"),
     path("runs/", views.HistoryView.as_view(), name="history"),
+    path(
+        "runs/hidden/<int:pk>/undo/",
+        views.UndoDismissalView.as_view(),
+        name="undo_dismissal",
+    ),
     path("runs/<int:pk>/", views.RunDetailView.as_view(), name="run"),
+    path(
+        "runs/<int:pk>/dismiss/",
+        views.DismissSuggestionView.as_view(),
+        name="dismiss_suggestion",
+    ),
 ]

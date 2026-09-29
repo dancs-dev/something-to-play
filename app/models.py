@@ -179,7 +179,7 @@ class RecommendationRun(models.Model):
         return f"Recommendation run {self.pk} for {self.user}"
 
     @property
-    def illustrated_results(self) -> list[dict[str, str]]:
+    def illustrated_results(self) -> list[dict[str, str | bool]]:
         results = sorted(
             self.results,
             key=lambda result: {"discover": 0, "backlog": 1, "replay": 2}.get(
@@ -209,6 +209,15 @@ class RecommendationRun(models.Model):
             if ambiguous
             else set()
         )
+        dismissed = (
+            set(
+                DismissedSuggestion.objects.filter(user=self.user).values_list(
+                    "game__normalized_title", flat=True
+                )
+            )
+            if any(result.get("category") == "discover" for result in results)
+            else set()
+        )
         illustrated = []
         for result in results:
             title = result.get("title", "")
@@ -225,6 +234,26 @@ class RecommendationRun(models.Model):
                 else ""
             )
             illustrated.append(
-                result | {"image_url": image_url, "steam_appid": valid_appid}
+                result
+                | {
+                    "image_url": image_url,
+                    "steam_appid": valid_appid,
+                    "dismissed": normalize_title(title) in dismissed,
+                }
             )
         return illustrated
+
+
+class DismissedSuggestion(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    game = models.ForeignKey(Game, on_delete=models.CASCADE)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "game"], name="unique_user_dismissed_game"
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.user}: {self.game}"
