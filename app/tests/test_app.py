@@ -569,7 +569,11 @@ class AppTests(TestCase):
             payload = json.loads(request.content)
             self.assertEqual(payload["model"], "qwen3.5:latest")
             self.assertNotIn("tools", payload)
-            self.assertEqual(payload["response_format"], {"type": "json_object"})
+            self.assertEqual(payload["response_format"]["type"], "json_schema")
+            self.assertEqual(
+                payload["response_format"]["json_schema"]["name"], "suggestions"
+            )
+            self.assertTrue(payload["response_format"]["json_schema"]["strict"])
             self.assertEqual(payload["reasoning_effort"], "none")
             self.assertEqual(payload["max_tokens"], 1234)
             self.assertIn("Clever puzzles", payload["messages"][1]["content"])
