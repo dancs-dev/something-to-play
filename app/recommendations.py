@@ -15,7 +15,7 @@ from .models import (
     normalize_title,
 )
 
-PROMPT_VERSION = "grouped-recommendations-v6"
+PROMPT_VERSION = "grouped-recommendations-v7"
 PROMPT = "\n".join(
     (
         "Suggest games using the player's ratings and reasons. Loved is a much "
@@ -29,9 +29,11 @@ PROMPT = "\n".join(
         "When several games are similarly good fits, prefer choices that make the "
         "overall set more varied. Do not choose obscure or weakly matched games merely "
         "for novelty.",
-        "For all picks, avoid recently recommended games when similarly suitable "
-        "alternatives exist, but fill each group to its requested count even if "
-        "that means repeating a recent title.",
+        "Never repeat a game from last_recommendations unless its group's "
+        "candidate list has at most three games. Also avoid "
+        "recent_recommendations from earlier runs when similarly suitable "
+        "alternatives exist, but fill each group to its requested count even "
+        "if that means repeating one.",
         "For discovery picks, return five real games from your knowledge that are not "
         "in excluded_discovery_titles. Prefer strong matches to the player's tastes "
         "over novelty. Return five discovery picks so later validation has spare "
@@ -84,10 +86,12 @@ def ask_provider(
     context: str = "",
     *,
     owned: dict[str, list[str]] | None = None,
+    last_recommendations: list[str] | None = None,
     recent_recommendations: list[str] | None = None,
     transport: httpx.BaseTransport | None = None,
 ) -> list[dict[str, str]]:
     owned = owned or {"replay": [], "backlog": [], "all": [], "known": []}
+    last_recommendations = last_recommendations or []
     recent_recommendations = recent_recommendations or []
 
     try:
@@ -123,6 +127,7 @@ def ask_provider(
                                         + owned.get("dismissed", [])[:200]
                                     )
                                 ),
+                                "last_recommendations": last_recommendations,
                                 "recent_recommendations": recent_recommendations,
                             }
                         ),
@@ -190,6 +195,8 @@ def ask_provider(
 
     blocked.update(entry["game"].strip().casefold() for entry in taste)
 
+    recent = {title.casefold() for title in last_recommendations}
+
     seen: set[str] = set()
 
     groups: dict[str, list[dict[str, str]]] = {
@@ -214,6 +221,13 @@ def ask_provider(
                 if key in blocked or normalize_title(title) in dismissed:
                     continue
             elif key not in allowed[category]:
+                continue
+
+            if key in recent and (
+                category == "discover"
+                or len(allowed[category]) > 3
+                or not allowed[category] <= recent
+            ):
                 continue
 
             groups[category].append(
@@ -241,6 +255,7 @@ def get_recent_recommendations(
     *,
     runs: int = 5,
     limit: int = 20,
+    exclude: list[str] | None = None,
 ) -> list[str]:
     recent_runs = (
         RecommendationRun.objects.filter(user=user)
@@ -248,7 +263,9 @@ def get_recent_recommendations(
         .values_list("results", flat=True)[:runs]
     )
 
-    seen: set[str] = set()
+    # Excluded titles cannot consume limit slots, even if they appear in
+    # several of the scanned runs.
+    seen: set[str] = {title.strip().casefold() for title in exclude or []}
     titles: list[str] = []
 
     for results in recent_runs:
@@ -304,10 +321,17 @@ def create_run(user: User, context: str = "") -> RecommendationRun:
         ),
     }
 
-    recent_recommendations = get_recent_recommendations(user=user)
+    last_recommendations = get_recent_recommendations(user=user, runs=1)
+    recent_recommendations = get_recent_recommendations(
+        user=user, runs=5, limit=15, exclude=last_recommendations
+    )
 
     results = ask_provider(
-        taste, context, owned=owned, recent_recommendations=recent_recommendations
+        taste,
+        context,
+        owned=owned,
+        last_recommendations=last_recommendations,
+        recent_recommendations=recent_recommendations,
     )
 
     return RecommendationRun.objects.create(

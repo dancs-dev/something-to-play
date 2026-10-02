@@ -135,6 +135,7 @@ class BrowserSmoke(StaticLiveServerTestCase):
                     "known": ["Portal 2"],
                     "dismissed": [],
                 },
+                last_recommendations=[],
                 recent_recommendations=[],
             )
             self.assertEqual(

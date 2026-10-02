@@ -1,6 +1,7 @@
 import json
+from datetime import timedelta
 from typing import Never
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 import httpx
 from django.contrib.auth import get_user_model
@@ -20,7 +21,12 @@ from app.models import (
     Preference,
     RecommendationRun,
 )
-from app.recommendations import RecommendationError, ask_provider, create_run
+from app.recommendations import (
+    RecommendationError,
+    ask_provider,
+    create_run,
+    get_recent_recommendations,
+)
 from app.views import game_by_title
 
 GAMES = [
@@ -31,6 +37,14 @@ GAMES = [
     }
 ]
 DISCOVERY_GAMES = GAMES + [GAMES[0] | {"title": f"New game {n}"} for n in range(4)]
+
+
+def response_with(content: dict) -> dict:
+    return {
+        "choices": [
+            {"finish_reason": "stop", "message": {"content": json.dumps(content)}}
+        ]
+    }
 
 
 @override_settings(PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"])
@@ -359,6 +373,7 @@ class AppTests(TestCase):
                 "known": ["Portal 2"],
                 "dismissed": [],
             },
+            last_recommendations=[],
             recent_recommendations=[],
         )
         self.assertContains(response, "The Talos Principle")
@@ -692,12 +707,221 @@ class AppTests(TestCase):
         }
         result = ask_provider(
             [{"game": "portal 2"}],
-            recent_recommendations=["The Talos Principle"],
+            last_recommendations=["Some unrelated recent pick"],
             transport=httpx.MockTransport(
                 lambda request: httpx.Response(200, json=response)
             ),
         )
         self.assertEqual(result, [GAMES[0] | {"category": "discover"}])
+
+    def test_last_run_titles_are_not_repeated(self) -> None:
+        """Picks from the most recent run must not come back in the next one."""
+        last_run = [
+            {"category": "replay", "title": "Portal 2"},
+            {"category": "backlog", "title": "Backlog game"},
+            {"category": "discover", "title": "New game 0"},
+        ]
+        with (
+            patch("app.recommendations.ask_provider", return_value=last_run),
+            patch("app.recommendations.get_recent_recommendations", return_value=[]),
+        ):
+            create_run(self.user)
+
+        def respond(request: httpx.Request) -> httpx.Response:
+            data = json.loads(json.loads(request.content)["messages"][1]["content"])
+            self.assertIn("Portal 2", data["last_recommendations"])
+            self.assertIn("New game 0", data["last_recommendations"])
+            return httpx.Response(
+                200,
+                json=response_with(
+                    {
+                        "replay": [GAMES[0] | {"title": "Portal 2"}],
+                        "backlog": [
+                            {
+                                "title": "Backlog game",
+                                "rationale": "Good fit",
+                                "drawback": "Maybe slow",
+                            }
+                        ],
+                        "discover": DISCOVERY_GAMES,
+                    }
+                ),
+            )
+
+        owned = {
+            "replay": ["Portal 2"],
+            "backlog": ["Backlog game"],
+            "all": ["Backlog game", "Portal 2"],
+            "known": ["Backlog game", "Portal 2"],
+            "dismissed": [],
+        }
+        picks = ask_provider(
+            [{"game": "Portal 2", "feeling": "loved", "reason": "Puzzles"}],
+            owned=owned,
+            last_recommendations=["Portal 2", "Backlog game", "New game 0"],
+            transport=httpx.MockTransport(respond),
+        )
+        # "New game 0" was recommended last run and is dropped, while replay
+        # and backlog repeat because each candidate list has one game.
+        self.assertEqual(
+            [(pick["category"], pick["title"]) for pick in picks],
+            [
+                ("discover", "The Talos Principle"),
+                ("discover", "New game 1"),
+                ("discover", "New game 2"),
+                ("backlog", "Backlog game"),
+                ("replay", "Portal 2"),
+            ],
+        )
+
+    def test_recent_recommendations_exclude_does_not_consume_limit(self) -> None:
+        """Last-run titles are skipped so the limit covers only older runs."""
+
+        def picks(prefix: str, count: int) -> list[dict[str, str]]:
+            return [
+                {"category": "discover", "title": f"{prefix} {n}"} for n in range(count)
+            ]
+
+        for offset, (prefix, count) in enumerate(
+            [
+                ("Last", 9),
+                ("Second", 9),
+                ("Third", 9),
+                ("Fourth", 9),
+                ("Fifth", 9),
+            ]
+        ):
+            run = RecommendationRun.objects.create(
+                user=self.user, inputs={}, results=picks(prefix, count)
+            )
+            RecommendationRun.objects.filter(pk=run.pk).update(
+                created_at=timezone.now() - timedelta(minutes=10 + offset)
+            )
+
+        last_run = get_recent_recommendations(self.user, runs=1)
+        self.assertEqual(len(last_run), 9)
+
+        # limit=15 applies to older titles only: 9 from the second run plus
+        # 6 from the third, and none of the last run's titles.
+        older = get_recent_recommendations(
+            self.user, runs=5, limit=15, exclude=last_run
+        )
+        self.assertEqual(
+            [title.removeprefix("Second ").removeprefix("Third ") for title in older],
+            [str(n) for n in range(9)] + [str(n) for n in range(6)],
+        )
+
+    def test_recent_recommendations_are_passed_and_not_hard_blocked(self) -> None:
+        """Older runs' titles reach the prompt as a soft signal, not a filter."""
+        response = response_with(
+            {"replay": [], "backlog": [], "discover": DISCOVERY_GAMES}
+        )
+
+        def respond(request: httpx.Request) -> httpx.Response:
+            data = json.loads(json.loads(request.content)["messages"][1]["content"])
+            self.assertEqual(data["recent_recommendations"], ["Older pick"])
+            return httpx.Response(200, json=response)
+
+        picks = ask_provider(
+            [],
+            last_recommendations=["The Talos Principle"],
+            recent_recommendations=["Older pick"],
+            transport=httpx.MockTransport(respond),
+        )
+        # "The Talos Principle" is hard-blocked; the soft list does not
+        # filter anything.
+        self.assertEqual(
+            [pick["title"] for pick in picks],
+            ["New game 0", "New game 1", "New game 2"],
+        )
+
+        # A title in only the soft list stays fully eligible for replay.
+        picks = ask_provider(
+            [],
+            owned={
+                "replay": ["Older pick"],
+                "backlog": [],
+                "all": [],
+                "known": [],
+            },
+            last_recommendations=["The Talos Principle"],
+            recent_recommendations=["Older pick"],
+            transport=httpx.MockTransport(
+                lambda request: httpx.Response(
+                    200,
+                    json=response_with(
+                        {
+                            "replay": [GAMES[0] | {"title": "Older pick"}],
+                            "backlog": [],
+                            "discover": DISCOVERY_GAMES,
+                        }
+                    ),
+                )
+            ),
+        )
+        self.assertEqual(
+            [(pick["category"], pick["title"]) for pick in picks],
+            [
+                ("discover", "New game 0"),
+                ("discover", "New game 1"),
+                ("discover", "New game 2"),
+                ("replay", "Older pick"),
+            ],
+        )
+
+        # create_run passes both lists separately.
+        with (
+            patch("app.recommendations.ask_provider", return_value=[]) as ask,
+            patch(
+                "app.recommendations.get_recent_recommendations",
+                side_effect=[["Last run"], ["Older pick"]],
+            ) as get_recent,
+        ):
+            create_run(self.user)
+        self.assertEqual(
+            get_recent.call_args_list,
+            [
+                call(user=self.user, runs=1),
+                call(user=self.user, runs=5, limit=15, exclude=["Last run"]),
+            ],
+        )
+        self.assertEqual(ask.call_args.kwargs["last_recommendations"], ["Last run"])
+        self.assertEqual(ask.call_args.kwargs["recent_recommendations"], ["Older pick"])
+
+    def test_all_recent_picks_fail_instead_of_duplicating(self) -> None:
+        """When filtering empties every group, the request fails loudly."""
+        response = response_with(
+            {
+                "replay": [
+                    GAMES[0] | {"title": "Replay 0"},
+                    GAMES[0] | {"title": "Replay 1"},
+                    GAMES[0] | {"title": "Replay 2"},
+                ],
+                "backlog": [],
+                "discover": DISCOVERY_GAMES,
+            }
+        )
+        owned = {
+            "replay": ["Portal 2", "Replay 0", "Replay 1", "Replay 2"],
+            "backlog": [],
+            "all": ["Portal 2", "Replay 0", "Replay 1", "Replay 2"],
+            "known": [],
+            "dismissed": [],
+        }
+        with self.assertRaises(RecommendationError):
+            ask_provider(
+                [{"game": "Portal 2", "feeling": "loved", "reason": "Puzzles"}],
+                owned=owned,
+                last_recommendations=[
+                    "Replay 0",
+                    "Replay 1",
+                    "Replay 2",
+                    *(game["title"] for game in DISCOVERY_GAMES),
+                ],
+                transport=httpx.MockTransport(
+                    lambda request: httpx.Response(200, json=response)
+                ),
+            )
 
     def test_dismissed_titles_reach_provider_and_are_filtered(self) -> None:
         def respond(request: httpx.Request) -> httpx.Response:
