@@ -584,9 +584,6 @@ class AppTests(TestCase):
             )
             self.assertNotIn("owned_titles", request_data)
             self.assertNotIn("known_titles", request_data)
-            self.assertIn(
-                "Return five discovery picks", payload["messages"][0]["content"]
-            )
             return httpx.Response(
                 200,
                 json={

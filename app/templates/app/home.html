@@ -11,7 +11,7 @@
         <h2>Anything in particular?</h2>
         <form method="post" action="{% url 'recommend' %}"
               hx-post="{% url 'recommend' %}" hx-target="#results" hx-swap="outerHTML"
-              hx-indicator="#thinking" hx-disabled-elt="find button" hx-request='{"timeout":100000}'>
+              hx-indicator="#thinking" hx-disabled-elt="find button" hx-request='{"timeout":300000}'>
           {% csrf_token %}
           {{ recommendation_form.as_p }}
           <button>Find games</button>
