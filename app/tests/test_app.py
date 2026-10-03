@@ -4,6 +4,7 @@ from typing import Never
 from unittest.mock import call, patch
 
 import httpx
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import connection
 from django.test import Client, TestCase, override_settings
@@ -386,6 +387,11 @@ class AppTests(TestCase):
         self.assertEqual(run.user_id, self.user.pk)
         self.assertEqual(run.results, GAMES)
         self.assertEqual(run.inputs["request"], "Something relaxing")
+        self.assertEqual(run.inputs["model"], settings.OPENAI_COMPATIBLE_MODEL)
+        self.assertEqual(
+            run.inputs["reasoning_effort"],
+            settings.OPENAI_COMPATIBLE_REASONING_EFFORT,
+        )
 
     def test_normal_form_post_also_calls_ai(self) -> None:
         with patch("app.recommendations.ask_provider", return_value=GAMES) as ask:
@@ -506,6 +512,25 @@ class AppTests(TestCase):
         self.assertNotContains(
             self.client.get(reverse("run", args=[run.pk])), "Not interested."
         )
+
+    def test_history_shows_model_and_thinking_level(self) -> None:
+        RecommendationRun.objects.create(
+            user=self.user,
+            inputs={
+                "request": "something novel",
+                "model": "qwen3.5:latest",
+                "reasoning_effort": "high",
+            },
+            results=[
+                {"title": "Outer Wilds", "category": "discover"},
+                {"title": "Balatro", "category": "backlog"},
+            ],
+        )
+        history = self.client.get(reverse("history"))
+        self.assertContains(history, "something novel")
+        self.assertContains(history, "qwen3.5:latest")
+        self.assertContains(history, "high thinking")
+        self.assertContains(history, "Outer Wilds, Balatro")
 
     def test_hidden_suggestions_can_be_undone_without_finding_a_run(self) -> None:
         dismissal = DismissedSuggestion.objects.create(

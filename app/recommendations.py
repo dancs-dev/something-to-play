@@ -350,6 +350,7 @@ def create_run(user: User, context: str = "") -> RecommendationRun:
             "taste": taste,
             "request": context,
             "model": settings.OPENAI_COMPATIBLE_MODEL,
+            "reasoning_effort": settings.OPENAI_COMPATIBLE_REASONING_EFFORT,
             "prompt_version": PROMPT_VERSION,
         },
         results=results,

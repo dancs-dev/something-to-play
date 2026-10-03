@@ -7,7 +7,7 @@
   {% if dismissed %}
     <section class="panel library-section">
       <h2>Hidden suggestions <span class="muted">{{ dismissed|length }}</span></h2>
-      <p class="muted">These games won't appear in future discovery picks.</p>
+      <p class="muted library-description">These games won't appear in future discovery picks.</p>
       {% for item in dismissed %}
         <article class="preference library-item">
           <h3>{{ item.game.title }}</h3>
@@ -19,9 +19,21 @@
       {% endfor %}
     </section>
   {% endif %}
-  <section class="panel">
+  <section class="panel library-section">
+    <h2>Recent picks <span class="muted">{{ runs|length }}</span></h2>
+    <p class="muted library-description">Your most recent runs, newest first.</p>
     {% for run in runs %}
-      <p><a href="{% url 'run' run.pk %}"><time datetime="{{ run.created_at|date:'c' }}" data-local-time>{{ run.created_at|date:'M j, Y H:i' }} UTC</time></a>{% if run.inputs.request %} | {{ run.inputs.request }}{% endif %}</p>
+      <article class="run-item">
+        <div>
+          <h3><a href="{% url 'run' run.pk %}"><time datetime="{{ run.created_at|date:'c' }}" data-local-time>{{ run.created_at|date:'M j, Y H:i' }} UTC</time></a></h3>
+          {% if run.inputs.request %}<p class="note">{{ run.inputs.request }}</p>{% endif %}
+          {% if run.results %}<p class="note">{% for result in run.results|slice:":3" %}{{ result.title }}{% if not forloop.last %}, {% endif %}{% endfor %}{% if run.results|length > 3 %} +{{ run.results|length|add:"-3" }} more{% endif %}</p>{% endif %}
+        </div>
+        <p class="run-meta">
+          {% if run.inputs.model %}<span class="chip" title="Model">{{ run.inputs.model }}</span>{% endif %}
+          <span class="chip" title="Thinking level">{% if run.inputs.reasoning_effort %}{{ run.inputs.reasoning_effort }} thinking{% else %}default thinking{% endif %}</span>
+        </p>
+      </article>
     {% empty %}
       <p>No picks yet. <a href="{% url 'home' %}">Find a game</a>.</p>
     {% endfor %}

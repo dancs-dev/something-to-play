@@ -17,7 +17,7 @@ h1 { font: 400 clamp(40px, 5vw, 66px)/1.08 Georgia, serif; letter-spacing: -2px;
 h2 { font-size: 22px; line-height: 1.25; letter-spacing: -.6px; margin: 0 0 20px; font-weight: 600; }
 h3 { font: 400 27px/1.2 Georgia, serif; margin: 12px 0 8px; }
 p { margin: 12px 0; }
-.eyebrow, .badge, .section-number { font: 11px/1.6 var(--mono); letter-spacing: 1.5px; text-transform: uppercase; }
+.eyebrow, .badge, .section-number, .chip { font: 11px/1.6 var(--mono); letter-spacing: 1.5px; text-transform: uppercase; }
 .eyebrow { color: var(--accent); margin: 0 0 20px; }
 .lead { font-size: 17px; color: var(--muted); max-width: 620px; }
 .hero { display: grid; grid-template-columns: 1.4fr 1fr; gap: 60px; align-items: center; padding: 40px 0 72px; }
@@ -54,18 +54,25 @@ button:disabled { opacity: .6; cursor: wait; }
 .badge { color: var(--accent); }
 .drawback { padding-left: 12px; border-left: 2px solid var(--border); color: var(--muted); font-size: 14px; }
 .notice { border-left: 3px solid var(--accent); padding: 12px 16px; background: #eee1d6; }
+.run-item { display: flex; justify-content: space-between; align-items: baseline; gap: 24px; flex-wrap: wrap; border-bottom: 1px solid var(--border); padding: 14px 0; overflow-wrap: anywhere; }
+.run-item h3 { margin: 0; font-size: 18px; }
+.run-item h3 a { text-decoration: none; }
+.run-item h3 a:hover { text-decoration: underline; }
+.run-item .note { margin: 2px 0 0; color: var(--muted); font-size: 14px; }
+.run-meta { display: flex; gap: 8px; flex-wrap: wrap; margin: 0; }
+.chip { border: 1px solid var(--border); color: var(--muted); padding: 2px 8px; white-space: nowrap; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
 .preference { border-bottom: 1px solid var(--border); padding: 12px 0 24px; overflow-wrap: anywhere; }
 .library-heading { display: flex; justify-content: space-between; align-items: start; gap: 24px; flex-wrap: wrap; }
 .library-heading form { margin: 0; }
 .library-heading form + .muted { display: block; margin-top: -4px; }
 .library-heading h2 { margin-bottom: 4px; }
 .library-heading p { margin: 4px 0 0; }
-.library-heading + .library-item, .library-description + .library-item { border-top: 1px solid var(--border); padding-top: 8px; }
+.library-heading + .library-item, .library-description + .library-item, .library-description + .run-item { border-top: 1px solid var(--border); padding-top: 8px; }
 .library-heading + .library-item { margin-top: 10px; }
 .library-section > h2 { margin-bottom: 4px; }
 .library-description { margin: 4px 0 10px; }
-.library-item { padding: 8px 0 12px; }
-.library-item h3 { font-size: 22px; margin: 2px 0 4px; }
+.library-item { padding: 14px 0; }
+.library-item h3 { font-size: 18px; margin: 0; }
 .library-item p { margin: 4px 0 8px; }
 .library-item .actions { gap: 14px; }
 .actions { gap: 20px; font-size: 13px; }
