@@ -72,6 +72,9 @@ CASES: list[Case] = [
 ]
 
 
+# Synthetic test players, generated with AI: the dislikes and complaints are
+# the negative signal the prompt is meant to reason about.
+#
 # Profiles mirror what create_run sends the provider: replay is every liked
 # or loved game, backlog is every "not played yet" rating, known is every
 # rated game plus the backlog, and all is the Steam library, which rated
