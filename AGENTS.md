@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-This is a Django game recommendation app. `config/` holds project settings and URL routing; `app/` holds models, views, forms, Steam integration, library sync, and recommendation logic. Database changes belong in `app/migrations/`. HTML templates live in `app/templates/`, and CSS and JavaScript assets live in `app/static/app/`. Tests are in `app/tests/`: `test_app.py` covers application behavior, `test_steam.py` covers Steam integration, and `test_browser.py` exercises the browser flow.
+This is a Django game recommendation app. `config/` holds project settings and URL routing; `app/` holds models, views, forms, Steam integration, library sync, recommendation logic, and management commands. Database changes belong in `app/migrations/`. HTML templates live in `app/templates/`, and CSS and JavaScript assets live in `app/static/app/`. Tests are in `app/tests/`: `test_app.py` covers application behavior, `test_steam.py` covers Steam integration, `test_browser.py` exercises the browser flow, and `test_eval.py` covers the eval command.
 
 ## Build, Test, and Development Commands
 

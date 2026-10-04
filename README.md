@@ -83,3 +83,16 @@ uv run mypy .
 ```bash
 uv run python manage.py test
 ```
+
+### Prompt evaluation
+
+The `eval_recommendations` management command measures how different models and reasoning levels handle the recommendation prompt. Edit the `CASES` and `PROFILES` lists at the top of `app/management/commands/eval_recommendations.py` to define what gets compared: each case is a model plus optional reasoning effort, endpoint, and price overrides, and each profile is a fixed test player (their taste ratings, request, and library).
+
+Requests go to a test case's own `base_url` and `api_key` when it has them, and otherwise to the app's configured endpoint and key. The default cases are OpenRouter models, so either set `OPENAI_COMPATIBLE_BASE_URL=https://openrouter.ai/api/v1` and your OpenRouter key as `OPENAI_COMPATIBLE_API_KEY` in `.env`, or add `base_url` and `api_key` to each case. A case with neither would hit the default local Ollama, which doesn't serve those model IDs, and fail.
+
+Every case runs against every profile through the same code path the app uses. The command writes a Markdown and JSON report to `evals/` with time taken, tokens, cost (marked as reported by the provider or estimated from the case's price table), and automatic style flags for the prompt's writing rules, such as stock praise words or repeated sentence openers.
+
+```bash
+uv run --env-file .env python manage.py eval_recommendations
+```
+

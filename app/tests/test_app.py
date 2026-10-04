@@ -23,7 +23,9 @@ from app.models import (
     RecommendationRun,
 )
 from app.recommendations import (
+    Owned,
     RecommendationError,
+    Taste,
     ask_provider,
     create_run,
     get_recent_recommendations,
@@ -629,7 +631,9 @@ class AppTests(TestCase):
                 },
             )
 
-        taste = [{"game": "Portal 2", "feeling": "like", "reason": "Clever puzzles"}]
+        taste: list[Taste] = [
+            {"game": "Portal 2", "feeling": "like", "reason": "Clever puzzles"}
+        ]
         with override_settings(
             OPENAI_COMPATIBLE_BASE_URL="http://localhost:11434/v1",
             OPENAI_COMPATIBLE_MODEL="qwen3.5:latest",
@@ -732,7 +736,7 @@ class AppTests(TestCase):
             ]
         }
         result = ask_provider(
-            [{"game": "portal 2"}],
+            [{"game": "portal 2", "feeling": "like", "reason": ""}],
             last_recommendations=["Some unrelated recent pick"],
             transport=httpx.MockTransport(
                 lambda request: httpx.Response(200, json=response)
@@ -774,7 +778,7 @@ class AppTests(TestCase):
                 ),
             )
 
-        owned = {
+        owned: Owned = {
             "replay": ["Portal 2"],
             "backlog": ["Backlog game"],
             "all": ["Backlog game", "Portal 2"],
@@ -927,7 +931,7 @@ class AppTests(TestCase):
                 "discover": DISCOVERY_GAMES,
             }
         )
-        owned = {
+        owned: Owned = {
             "replay": ["Portal 2", "Replay 0", "Replay 1", "Replay 2"],
             "backlog": [],
             "all": ["Portal 2", "Replay 0", "Replay 1", "Replay 2"],
@@ -1038,7 +1042,7 @@ class AppTests(TestCase):
                 }
             ]
         }
-        owned = {
+        owned: Owned = {
             "replay": ["Portal 2"],
             "backlog": ["Backlog game"],
             "all": ["Backlog game", "Ignored game", "Portal 2"],
@@ -1100,7 +1104,7 @@ class AppTests(TestCase):
         )
 
     def test_recommender_accepts_three_picks_in_each_group(self) -> None:
-        owned = {
+        owned: Owned = {
             "replay": [f"Replay {n}" for n in range(3)],
             "backlog": [f"Backlog {n}" for n in range(3)],
             "all": [f"Replay {n}" for n in range(3)]
