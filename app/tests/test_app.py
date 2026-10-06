@@ -26,6 +26,7 @@ from app.recommendations import (
     Owned,
     RecommendationError,
     Taste,
+    _finish_run,
     ask_provider,
     create_run,
     get_recent_recommendations,
@@ -460,6 +461,26 @@ class AppTests(TestCase):
         self.assertTrue(Preference.objects.filter(pk=self.preference.pk).exists())
 
     @override_settings(Q_CLUSTER={"sync": False})
+    def test_repeat_requests_while_pending_reuse_one_run(self) -> None:
+        with patch("app.views.enqueue_recommendation") as enqueue:
+            first = self.client.post(
+                reverse("recommend"), {"context": "a"}, HTTP_HX_REQUEST="true"
+            )
+            run = RecommendationRun.objects.get()
+            repeat = self.client.post(
+                reverse("recommend"), {"context": "b"}, HTTP_HX_REQUEST="true"
+            )
+            self.client.post(reverse("recommend"), {"context": "c"})
+        self.assertNotContains(first, "different")
+        self.assertContains(repeat, "Still working on your last request")
+        self.assertEqual(RecommendationRun.objects.count(), 1)
+        self.assertEqual(enqueue.call_count, 1)
+        self.assertEqual(enqueue.call_args[0][0], run.pk)
+        self.assertContains(
+            self.client.get(reverse("run", args=[run.pk])), "wait-stage"
+        )
+
+    @override_settings(Q_CLUSTER={"sync": False})
     def test_pending_run_polls_until_worker_finishes(self) -> None:
         with (
             patch("app.views.enqueue_recommendation") as enqueue,
@@ -493,6 +514,27 @@ class AppTests(TestCase):
         self.assertEqual(run.status, RecommendationRun.Status.CANCELLED)
         self.assertContains(response, "Stopped waiting")
         self.assertContains(response, "Try again")
+
+    def test_worker_finishing_a_cancelled_run_discards_results(self) -> None:
+        run = RecommendationRun.objects.create(
+            user=self.user, inputs={}, status=RecommendationRun.Status.PENDING
+        )
+        self.client.post(reverse("run_cancel", args=[run.pk]))
+        _finish_run(
+            run.pk,
+            RecommendationRun.Status.DONE,
+            results=[
+                {
+                    "title": "Late",
+                    "category": "replay",
+                    "rationale": "r",
+                    "drawback": "d",
+                }
+            ],
+        )
+        run.refresh_from_db()
+        self.assertEqual(run.status, RecommendationRun.Status.CANCELLED)
+        self.assertEqual(run.results, [])
 
     def test_stale_pending_run_is_marked_failed(self) -> None:
         run = RecommendationRun.objects.create(
@@ -572,6 +614,15 @@ class AppTests(TestCase):
         self.assertEqual(
             Preference.objects.count(), 2
         )  # Prefill waits for the user's reason and save.
+
+    def test_malformed_game_param_prefills_nothing_instead_of_crashing(self) -> None:
+        response = self.client.get(reverse("preference_new"), {"game": "abc"})
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("subject", response.context["form"].initial)
+        self.assertEqual(
+            self.client.get(reverse("preference_new"), {"game": "999999"}).status_code,
+            404,
+        )
 
     def test_discovery_dismissal_and_undo_from_past_run(self) -> None:
         run = RecommendationRun.objects.create(

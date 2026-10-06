@@ -1,6 +1,9 @@
 :root { color-scheme: light; --bg: #f4f1e9; --panel: #faf8f2; --border: #d6d2c7; --text: #252720; --muted: #64665c; --accent: #a53b23; --mono: 'Courier New', monospace; }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.65 system-ui, sans-serif; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.65 system-ui, sans-serif; overflow-wrap: break-word; }
+/* Long game titles and notes can start with CJK or RTL script; let each
+   paragraph take its direction from its own first strong character. */
+h1, h2, h3, p { unicode-bidi: plaintext; }
 a { color: inherit; text-underline-offset: 4px; }
 a:hover { color: var(--accent); }
 header, main { max-width: 1200px; margin: auto; padding: 28px 40px; }
@@ -88,6 +91,7 @@ button:disabled { opacity: .6; cursor: wait; }
 .wait-track span { flex: 1; height: 6px; background: var(--border); animation: wait-block 1.6s linear infinite; animation-delay: calc(var(--i) * 90ms); }
 .wait-note { margin: 0; color: var(--muted); font-size: 13px; max-width: 54ch; }
 .wait-stopped { margin: 12px 0 0; }
+.wait-lost { margin: 12px 0 0; }
 @keyframes wait-block { 0%, 22% { background: var(--accent); } 42%, 100% { background: var(--border); } }
 @media (prefers-reduced-motion: reduce) {
   .wait-track { display: none; }

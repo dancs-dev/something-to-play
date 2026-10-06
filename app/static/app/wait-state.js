@@ -43,4 +43,24 @@
 
   start();
   document.body.addEventListener('htmx:afterSwap', start);
+
+  // The poller retries through network failures and 5xx; surface that in the
+  // wait box so a stalled connection isn't mistaken for a slow provider.
+  function lostContact() {
+    const wait = document.querySelector('.wait');
+    if (!wait) return;
+    let note = wait.querySelector('.wait-lost');
+    if (!note) {
+      note = document.createElement('p');
+      note.className = 'wait-lost muted';
+      wait.insertBefore(note, wait.querySelector('form'));
+    }
+    note.textContent = 'Lost contact with the server. Retrying.';
+  }
+  document.body.addEventListener('htmx:sendError', lostContact);
+  document.body.addEventListener('htmx:responseError', lostContact);
+  document.body.addEventListener('htmx:beforeRequest', () => {
+    const note = document.querySelector('.wait-lost');
+    if (note) note.remove();
+  });
 })();

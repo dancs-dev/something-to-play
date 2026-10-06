@@ -1,5 +1,6 @@
 <section id="results"{% if run %} class="has-picks"{% endif %} aria-live="polite">
   {% if error %}<p class="notice" role="alert">{{ error }}</p>{% endif %}
+  {% if note %}<p class="notice" role="status">{{ note }}</p>{% endif %}
   {% if run.is_pending %}
     {{ run.STAGES|json_script:"wait-stages" }}
     <div class="wait" id="wait">
@@ -30,7 +31,7 @@
       <button type="submit" class="quiet">Try again</button>
     </form>
   {% elif run.status == 'failed' %}
-    <p class="notice" role="alert">{{ run.error }}</p>
+    <p class="notice" role="alert">{{ run.error|default:"Something went wrong. Try again." }}</p>
   {% elif run %}
     <h2>{% if request.resolver_match.url_name == 'run' or request.GET.page == 'run' %}Your picks{% else %}Latest picks{% endif %}</h2>
     <p class="muted"><time datetime="{{ run.created_at|date:'c' }}" data-local-time="short">{{ run.created_at|date:'M j, H:i' }} UTC</time> | AI suggestions based on the games you've rated.</p>

@@ -193,8 +193,8 @@ class PreferenceFormMixin(LoginRequiredMixin, ModelFormMixin, ProcessFormView):
                 "subject": self.object.game.title,
                 "game_id": self.object.game_id,
             }
-        elif self.request.GET.get("game"):
-            game = get_object_or_404(Game, pk=self.request.GET["game"])
+        elif self.request.GET.get("game", "").isdecimal():
+            game = get_object_or_404(Game, pk=int(self.request.GET["game"]))
             initial |= {"subject": game.title, "game_id": game.pk}
         elif self.request.GET.get("title"):
             initial["subject"] = self.request.GET["title"][:200]
@@ -288,16 +288,34 @@ class RecommendationView(LoginRequiredMixin, FormView):
         return render(self.request, self.template_name, context)
 
     def form_valid(self, form: RecommendationForm) -> HttpResponse:
-        try:
-            run = create_pending_run(
-                _authenticated_user(self.request), form.cleaned_data["context"]
+        note = ""
+        latest = (
+            RecommendationRun.objects.filter(user=_authenticated_user(self.request))
+            .exclude(status=RecommendationRun.Status.CANCELLED)
+            .order_by("-created_at")
+            .first()
+        )
+        if latest and latest.is_pending:
+            # ponytail: repeat requests reuse the queued run instead of
+            # stacking provider calls; re-enqueue would process it twice.
+            run = latest
+            note = (
+                "Still working on your last request. "
+                "Cancel it if you want to ask for something different."
             )
-        except RecommendationError as exc:
-            return self.render_result({"run": None, "error": str(exc)}, form)
-        enqueue_recommendation(run.pk)
-        run.refresh_from_db()
+        else:
+            try:
+                run = create_pending_run(
+                    _authenticated_user(self.request), form.cleaned_data["context"]
+                )
+            except RecommendationError as exc:
+                return self.render_result({"run": None, "error": str(exc)}, form)
+            enqueue_recommendation(run.pk)
+            run.refresh_from_db()
         if self.request.headers.get("HX-Request") == "true":
-            return self.render_result({"run": run})
+            return self.render_result({"run": run, "note": note})
+        if note:
+            messages.info(self.request, note)
         return redirect("run", pk=run.pk)
 
     def form_invalid(self, form: RecommendationForm) -> HttpResponse:
