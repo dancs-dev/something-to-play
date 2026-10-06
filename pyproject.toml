@@ -4,6 +4,7 @@ version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
     "django>=5.2,<5.3",
+    "django-q2>=1.11.1",
     "gunicorn>=23,<24",
     "httpx>=0.28.1",
     "pydantic>=2.13.5",
@@ -32,6 +33,10 @@ quote-style = "double"
 plugins = ["mypy_django_plugin.main"]
 python_version = "3.12"
 check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = ["django_q.*"]
+ignore_missing_imports = true
 
 [tool.django-stubs]
 django_settings_module = "config.settings"

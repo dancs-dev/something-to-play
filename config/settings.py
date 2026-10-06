@@ -32,6 +32,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "django_q",
 ]
 
 MIDDLEWARE = [
@@ -157,3 +158,19 @@ OPENAI_COMPATIBLE_REASONING_EFFORT = os.getenv(
 OPENAI_COMPATIBLE_MAX_TOKENS = int(os.getenv("OPENAI_COMPATIBLE_MAX_TOKENS", "5000"))
 STEAM_WEB_API_KEY = os.getenv("STEAM_WEB_API_KEY", "").strip()
 DATA_UPLOAD_MAX_MEMORY_SIZE = 128 * 1024
+
+# Background recommendations run through django-q2's ORM broker. Run a worker
+# with `python manage.py qcluster`. `sync` executes tasks inline, for tests.
+Q_CLUSTER = {
+    "name": "game-recommender",
+    "workers": 2,
+    "timeout": 600,
+    "retry": 900,
+    "max_attempts": 1,
+    "orm": "default",
+    "catch_up": False,
+    "sync": os.getenv("DJANGO_Q_SYNC", "0") == "1",
+}
+# A run with no worker progress for this long is treated as failed, so a
+# crashed or stopped cluster doesn't leave the loader spinning forever.
+RECOMMENDATION_STALE_SECONDS = int(os.getenv("RECOMMENDATION_STALE_SECONDS", "660"))

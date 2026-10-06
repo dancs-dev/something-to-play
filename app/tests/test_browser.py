@@ -11,7 +11,7 @@ from app.models import Game, GameIdentity, RecommendationRun
 from app.tests.test_app import GAMES
 
 
-@override_settings(ALLOWED_HOSTS=["localhost", "testserver"])
+@override_settings(ALLOWED_HOSTS=["localhost", "testserver"], Q_CLUSTER={"sync": True})
 class BrowserSmoke(StaticLiveServerTestCase):
     def test_broken_art_uses_steam_fallback(self) -> None:
         from playwright.sync_api import sync_playwright

@@ -1,7 +1,38 @@
 <section id="results"{% if run %} class="has-picks"{% endif %} aria-live="polite">
   {% if error %}<p class="notice" role="alert">{{ error }}</p>{% endif %}
-  {% if run %}
-    <h2>{% if request.resolver_match.url_name == 'run' %}Your picks{% else %}Latest picks{% endif %}</h2>
+  {% if run.is_pending %}
+    {{ run.STAGES|json_script:"wait-stages" }}
+    <div class="wait" id="wait">
+      <div class="wait-head">
+        <p class="wait-stage" role="status">{{ run.stage }}</p>
+        <p class="wait-time"><span class="wait-seconds">{{ run.elapsed_seconds }}</span>s</p>
+      </div>
+      <div class="wait-track" aria-hidden="true">
+        <span style="--i:0"></span><span style="--i:1"></span><span style="--i:2"></span><span style="--i:3"></span><span style="--i:4"></span><span style="--i:5"></span><span style="--i:6"></span><span style="--i:7"></span><span style="--i:8"></span><span style="--i:9"></span><span style="--i:10"></span><span style="--i:11"></span><span style="--i:12"></span><span style="--i:13"></span><span style="--i:14"></span><span style="--i:15"></span>
+      </div>
+      <p class="wait-note">Your ratings and this request go to the AI provider you configured.</p>
+      <form method="post" action="{% url 'run_cancel' run.pk %}"
+            hx-post="{% url 'run_cancel' run.pk %}" hx-target="#results" hx-swap="outerHTML">
+        {% csrf_token %}
+        <button type="submit" class="quiet">Cancel</button>
+      </form>
+    </div>
+    <div hx-get="{% url 'run_status' run.pk %}?page={{ request.resolver_match.url_name }}"
+         hx-trigger="every 2s"
+         hx-target="#results" hx-swap="outerHTML"></div>
+  {% elif run.status == 'cancelled' %}
+    <p class="wait-stopped muted">Stopped waiting.</p>
+    <form method="post" action="{% url 'recommend' %}"
+          hx-post="{% url 'recommend' %}" hx-target="#results" hx-swap="outerHTML"
+          hx-disabled-elt="find button">
+      {% csrf_token %}
+      <input type="hidden" name="context" value="{{ run.inputs.request }}">
+      <button type="submit" class="quiet">Try again</button>
+    </form>
+  {% elif run.status == 'failed' %}
+    <p class="notice" role="alert">{{ run.error }}</p>
+  {% elif run %}
+    <h2>{% if request.resolver_match.url_name == 'run' or request.GET.page == 'run' %}Your picks{% else %}Latest picks{% endif %}</h2>
     <p class="muted"><time datetime="{{ run.created_at|date:'c' }}" data-local-time="short">{{ run.created_at|date:'M j, H:i' }} UTC</time> | AI suggestions based on the games you've rated.</p>
     {% regroup run.illustrated_results by category as result_groups %}
     {% for group in result_groups %}

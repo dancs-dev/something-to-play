@@ -7,11 +7,35 @@ services:
       DJANGO_HTTPS: ${DJANGO_HTTPS:-0}
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Set DJANGO_SECRET_KEY in .env}
     extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - host.docker.internal:host-gateway
     ports:
       - "127.0.0.1:8000:8000"
     volumes:
       - data:/data
+    healthcheck:
+      # The web container runs migrations before gunicorn, so an open port
+      # means the database is ready for the worker.
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8000), 2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  worker:
+    build: .
+    env_file: .env
+    environment:
+      DJANGO_DEBUG: "0"
+      DJANGO_HTTPS: ${DJANGO_HTTPS:-0}
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Set DJANGO_SECRET_KEY in .env}
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    volumes:
+      - data:/data
+    command: python manage.py qcluster
+    depends_on:
+      web:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:

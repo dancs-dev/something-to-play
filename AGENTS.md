@@ -11,6 +11,7 @@ Use Python 3.12 or later and `uv`.
 - `uv sync --locked`: install the locked dependencies.
 - `uv run python manage.py migrate`: apply database migrations.
 - `uv run --env-file .env python manage.py runserver`: start the local server with provider settings. Omit `--env-file .env` when no local configuration is needed.
+- `uv run --env-file .env python manage.py qcluster`: process background recommendation jobs; run alongside the server or recommendations never finish.
 - `uv run python manage.py test`: run the Django test suite.
 - `uv run pre-commit run --all-files`: run formatting, linting, type checks, and secret scanning.
 

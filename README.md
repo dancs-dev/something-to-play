@@ -28,7 +28,7 @@ Set `STEAM_WEB_API_KEY` in `.env` to enable Steam profile lookup, library sync, 
 
 ### Docker Compose
 
-Copy `.env.example` to `.env`, set a unique `DJANGO_SECRET_KEY` (for example, generate one with `python3 -c 'import secrets; print(secrets.token_urlsafe(50))'`), and set `OPENAI_COMPATIBLE_BASE_URL=http://host.docker.internal:11434/v1`. Compose connects to your existing Ollama without another Ollama image or model download. The app is available only at <http://localhost:8000>; its SQLite database lives in a named volume, and migrations run when the container starts.
+Copy `.env.example` to `.env`, set a unique `DJANGO_SECRET_KEY` (for example, generate one with `python3 -c 'import secrets; print(secrets.token_urlsafe(50))'`), and set `OPENAI_COMPATIBLE_BASE_URL=http://host.docker.internal:11434/v1`. Compose connects to your existing Ollama without another Ollama image or model download. The app is available only at <http://localhost:8000>; its SQLite database lives in a named volume, and migrations run when the container starts. A second `worker` service runs `qcluster` to process recommendations in the background.
 
 On Linux, Ollama must listen on an address the container can reach: its default `127.0.0.1:11434` bind is insufficient. Set `OLLAMA_HOST=0.0.0.0:11434` for the host Ollama service and restrict port 11434 with your firewall if the host is reachable from other machines.
 
@@ -59,6 +59,14 @@ With a `.env` file, start the server with:
 ```bash
 uv run --env-file .env python manage.py runserver
 ```
+
+Recommendations run in the background, so also start a worker in a second terminal:
+
+```bash
+uv run --env-file .env python manage.py qcluster
+```
+
+The web request returns immediately and the page polls the run's status until the picks are ready. Without a running worker the loader stops with an error after a few minutes.
 
 Open <http://localhost:8000> and create an account.
 

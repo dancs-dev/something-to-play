@@ -4,6 +4,7 @@ from builtins import object as BuiltinObject
 from datetime import timedelta
 from typing import cast
 
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.models import User
@@ -38,7 +39,11 @@ from .models import (
     RecommendationRun,
     normalize_title,
 )
-from .recommendations import RecommendationError, create_run
+from .recommendations import (
+    RecommendationError,
+    create_pending_run,
+    enqueue_recommendation,
+)
 from .steam import SteamError, header_image_url, resolve_profile
 
 
@@ -77,6 +82,21 @@ def _authenticated_user(request: HttpRequest) -> User:
     return cast(User, request.user)
 
 
+def _update_if_pending(run_id: int, **fields: object) -> None:
+    """Update a run only while it is still pending.
+
+    A run that finished between the caller's read and this update keeps its
+    state, so results are never overwritten by a stale failure or a cancel.
+    """
+    RecommendationRun.objects.filter(
+        pk=run_id,
+        status__in=[
+            RecommendationRun.Status.PENDING,
+            RecommendationRun.Status.RUNNING,
+        ],
+    ).update(**fields)
+
+
 class HomeView(TemplateView):
     template_name = "app/home.html"
 
@@ -92,6 +112,7 @@ class HomeView(TemplateView):
                 ).exists(),
                 recommendation_form=RecommendationForm(),
                 run=RecommendationRun.objects.filter(user=self.request.user)
+                .exclude(status=RecommendationRun.Status.CANCELLED)
                 .order_by("-created_at")
                 .first(),
             )
@@ -254,6 +275,7 @@ class RecommendationView(LoginRequiredMixin, FormView):
             "run": RecommendationRun.objects.filter(
                 user=_authenticated_user(self.request)
             )
+            .exclude(status=RecommendationRun.Status.CANCELLED)
             .order_by("-created_at")
             .first(),
             **result,
@@ -262,11 +284,13 @@ class RecommendationView(LoginRequiredMixin, FormView):
 
     def form_valid(self, form: RecommendationForm) -> HttpResponse:
         try:
-            run = create_run(
+            run = create_pending_run(
                 _authenticated_user(self.request), form.cleaned_data["context"]
             )
         except RecommendationError as exc:
             return self.render_result({"run": None, "error": str(exc)}, form)
+        enqueue_recommendation(run.pk)
+        run.refresh_from_db()
         if self.request.headers.get("HX-Request") == "true":
             return self.render_result({"run": run})
         return redirect("run", pk=run.pk)
@@ -288,6 +312,41 @@ class RunDetailView(LoginRequiredMixin, DetailView):
 
     def get_queryset(self) -> QuerySet[RecommendationRun]:
         return RecommendationRun.objects.filter(user=_authenticated_user(self.request))
+
+
+class RunStatusView(LoginRequiredMixin, View):
+    """htmx poll target: the wait state while a run works, then the picks."""
+
+    def get(self, request: HttpRequest, pk: int) -> HttpResponse:
+        run = get_object_or_404(
+            RecommendationRun, pk=pk, user=_authenticated_user(request)
+        )
+        if run.is_pending:
+            if run.elapsed_seconds <= settings.RECOMMENDATION_STALE_SECONDS:
+                # Nothing to swap yet; the poller keeps running. Avoids
+                # re-rendering (and re-announcing) the wait state every poll.
+                return HttpResponse(status=204)
+            _update_if_pending(
+                run.pk,
+                status=RecommendationRun.Status.FAILED,
+                error="The recommendation took too long. Try again.",
+            )
+            run.refresh_from_db()
+        return render(request, "app/results.html", {"run": run})
+
+
+class CancelRunView(LoginRequiredMixin, View):
+    http_method_names = ["post"]
+
+    def post(self, request: HttpRequest, pk: int) -> HttpResponse:
+        run = get_object_or_404(
+            RecommendationRun, pk=pk, user=_authenticated_user(request)
+        )
+        _update_if_pending(run.pk, status=RecommendationRun.Status.CANCELLED)
+        run.refresh_from_db()
+        if request.headers.get("HX-Request") == "true":
+            return render(request, "app/results.html", {"run": run})
+        return redirect("run", pk=run.pk)
 
 
 class DismissSuggestionView(LoginRequiredMixin, View):
@@ -329,7 +388,9 @@ class HistoryView(LoginRequiredMixin, TemplateView):
         return super().get_context_data(
             runs=RecommendationRun.objects.filter(
                 user=_authenticated_user(self.request)
-            ).order_by("-created_at")[:50],
+            )
+            .exclude(status=RecommendationRun.Status.CANCELLED)
+            .order_by("-created_at")[:50],
             dismissed=DismissedSuggestion.objects.filter(
                 user=_authenticated_user(self.request)
             )

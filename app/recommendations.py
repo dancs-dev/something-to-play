@@ -1,11 +1,14 @@
 """Send the user's saved taste to an OpenAI-compatible provider."""
 
 import json
+import logging
+from collections.abc import Iterable
 from typing import NotRequired, TypedDict
 
 import httpx
 from django.conf import settings
 from django.contrib.auth.models import User
+from django_q.tasks import async_task
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from .models import (
@@ -15,6 +18,8 @@ from .models import (
     RecommendationRun,
     normalize_title,
 )
+
+logger = logging.getLogger(__name__)
 
 PROMPT_VERSION = "grouped-recommendations-v9"
 
@@ -412,9 +417,9 @@ def get_recent_recommendations(
     return titles
 
 
-def create_run(user: User, context: str = "") -> RecommendationRun:
-    preferences = list(Preference.objects.filter(user=user).select_related("game"))
-    taste: list[Taste] = [
+def _taste_for(preferences: Iterable[Preference]) -> list[Taste]:
+    """Rated-game entries for the provider; skips unrated sentiments."""
+    return [
         {
             "game": p.game.title,
             "feeling": p.get_sentiment_display().lower(),
@@ -423,11 +428,14 @@ def create_run(user: User, context: str = "") -> RecommendationRun:
         for p in preferences
         if p.sentiment in {-1, 1, 2}
     ]
-    if not taste:
-        raise RecommendationError(
-            "Add a game you like or dislike first, or mark one Loved, "
-            "so the AI has something to work with."
-        )
+
+
+def _provider_arguments(
+    user: User,
+) -> tuple[list[Taste], Owned, list[str], list[str]]:
+    """Build the provider arguments from the user's current saved data."""
+    preferences = list(Preference.objects.filter(user=user).select_related("game"))
+    taste = _taste_for(preferences)
     owned_titles = list(
         Ownership.objects.filter(account__user=user, is_active=True)
         .order_by("game__title")
@@ -445,20 +453,25 @@ def create_run(user: User, context: str = "") -> RecommendationRun:
             )
         ),
     }
-
     last_recommendations = get_recent_recommendations(user=user, runs=1)
     recent_recommendations = get_recent_recommendations(
         user=user, runs=5, limit=15, exclude=last_recommendations
     )
+    return taste, owned, last_recommendations, recent_recommendations
 
-    results = ask_provider(
-        taste,
-        context,
-        owned=owned,
-        last_recommendations=last_recommendations,
-        recent_recommendations=recent_recommendations,
-    )
 
+def create_pending_run(user: User, context: str = "") -> RecommendationRun:
+    """Save an unfinished run so the request can return before the AI answers.
+
+    Raises:
+        RecommendationError: The user has no rated games to work with.
+    """
+    taste = _taste_for(Preference.objects.filter(user=user).select_related("game"))
+    if not taste:
+        raise RecommendationError(
+            "Add a game you like or dislike first, or mark one Loved, "
+            "so the AI has something to work with."
+        )
     return RecommendationRun.objects.create(
         user=user,
         inputs={
@@ -468,5 +481,71 @@ def create_run(user: User, context: str = "") -> RecommendationRun:
             "reasoning_effort": settings.OPENAI_COMPATIBLE_REASONING_EFFORT,
             "prompt_version": PROMPT_VERSION,
         },
-        results=results,
+        status=RecommendationRun.Status.PENDING,
     )
+
+
+def _finish_run(
+    run_id: int,
+    status: RecommendationRun.Status,
+    *,
+    results: list[Pick] | None = None,
+    error: str = "",
+) -> None:
+    fields: dict[str, object] = {"status": status}
+    if results is not None:
+        fields["results"] = results
+    if error:
+        fields["error"] = error
+    # Exclude a cancel that raced in while the provider was answering.
+    RecommendationRun.objects.filter(pk=run_id).exclude(
+        status=RecommendationRun.Status.CANCELLED
+    ).update(**fields)
+
+
+def run_recommendation(run_id: int) -> None:
+    """Provider work for one run. Called by the django-q2 worker."""
+    run = RecommendationRun.objects.select_related("user").get(pk=run_id)
+    if run.status == RecommendationRun.Status.CANCELLED:
+        return
+    RecommendationRun.objects.filter(pk=run_id).exclude(
+        status=RecommendationRun.Status.CANCELLED
+    ).update(status=RecommendationRun.Status.RUNNING)
+    try:
+        taste, owned, last, recent = _provider_arguments(run.user)
+        results = ask_provider(
+            taste,
+            run.inputs.get("request", ""),
+            owned=owned,
+            last_recommendations=last,
+            recent_recommendations=recent,
+        )
+    except RecommendationError as exc:
+        _finish_run(run_id, RecommendationRun.Status.FAILED, error=str(exc))
+        return
+    except Exception:
+        logger.exception("Recommendation run %s failed", run_id)
+        _finish_run(
+            run_id,
+            RecommendationRun.Status.FAILED,
+            error="Something went wrong. Try again.",
+        )
+        return
+    _finish_run(run_id, RecommendationRun.Status.DONE, results=results)
+
+
+def enqueue_recommendation(run_id: int) -> None:
+    """Queue a run for the worker. `Q_CLUSTER["sync"]` runs it inline in tests."""
+    async_task(
+        "app.recommendations.run_recommendation",
+        run_id,
+        sync=bool(settings.Q_CLUSTER.get("sync", False)),
+    )
+
+
+def create_run(user: User, context: str = "") -> RecommendationRun:
+    """Run the provider synchronously and return the finished run."""
+    run = create_pending_run(user, context)
+    run_recommendation(run.pk)
+    run.refresh_from_db()
+    return run

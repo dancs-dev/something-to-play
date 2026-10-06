@@ -29,8 +29,9 @@ from app.recommendations import (
     ask_provider,
     create_run,
     get_recent_recommendations,
+    run_recommendation,
 )
-from app.views import game_by_title
+from app.views import _update_if_pending, game_by_title
 
 GAMES = [
     {
@@ -50,7 +51,10 @@ def response_with(content: dict) -> dict:
     }
 
 
-@override_settings(PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"])
+@override_settings(
+    PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"],
+    Q_CLUSTER={"sync": True},
+)
 class AppTests(TestCase):
     def setUp(self) -> None:
         self.user = get_user_model().objects.create_user("alice")
@@ -412,7 +416,7 @@ class AppTests(TestCase):
         self.assertContains(response, "Add a game you like or dislike first")
         ask.assert_not_called()
 
-    def test_recommendation_failure_shows_error_without_saving_run(self) -> None:
+    def test_recommendation_failure_is_saved_and_shown(self) -> None:
         for htmx in (False, True):
             with (
                 self.subTest(htmx=htmx),
@@ -426,9 +430,97 @@ class AppTests(TestCase):
                     {"context": "Puzzle games"},
                     HTTP_HX_REQUEST="true" if htmx else "false",
                 )
-                self.assertContains(response, "AI provider is unavailable")
-        self.assertFalse(RecommendationRun.objects.exists())
+                run = RecommendationRun.objects.latest("pk")
+                self.assertEqual(run.status, RecommendationRun.Status.FAILED)
+                self.assertEqual(run.error, "AI provider is unavailable")
+                if htmx:
+                    self.assertContains(response, "AI provider is unavailable")
+                else:
+                    self.assertRedirects(response, reverse("run", args=[run.pk]))
+                    self.assertContains(
+                        self.client.get(reverse("run", args=[run.pk])),
+                        "AI provider is unavailable",
+                    )
         self.assertTrue(Preference.objects.filter(pk=self.preference.pk).exists())
+
+    @override_settings(Q_CLUSTER={"sync": False})
+    def test_pending_run_polls_until_worker_finishes(self) -> None:
+        with (
+            patch("app.views.enqueue_recommendation") as enqueue,
+            patch("app.recommendations.ask_provider", return_value=GAMES),
+        ):
+            response = self.client.post(
+                reverse("recommend"), {"context": "relaxing"}, HTTP_HX_REQUEST="true"
+            )
+            run = RecommendationRun.objects.get()
+            enqueue.assert_called_once_with(run.pk)
+            self.assertEqual(run.status, RecommendationRun.Status.PENDING)
+            self.assertContains(response, "wait-stage")
+            self.assertContains(response, "hx-trigger")
+            pending = self.client.get(reverse("run_status", args=[run.pk]))
+            self.assertEqual(pending.status_code, 204)
+            run_recommendation(run.pk)
+        finished = self.client.get(reverse("run_status", args=[run.pk]))
+        self.assertContains(finished, "The Talos Principle")
+
+    @override_settings(Q_CLUSTER={"sync": False})
+    def test_cancel_marks_run_cancelled(self) -> None:
+        with patch("app.views.enqueue_recommendation"):
+            self.client.post(
+                reverse("recommend"), {"context": "x"}, HTTP_HX_REQUEST="true"
+            )
+        run = RecommendationRun.objects.get()
+        response = self.client.post(
+            reverse("run_cancel", args=[run.pk]), HTTP_HX_REQUEST="true"
+        )
+        run.refresh_from_db()
+        self.assertEqual(run.status, RecommendationRun.Status.CANCELLED)
+        self.assertContains(response, "Stopped waiting")
+        self.assertContains(response, "Try again")
+
+    def test_stale_pending_run_is_marked_failed(self) -> None:
+        run = RecommendationRun.objects.create(
+            user=self.user, inputs={}, status=RecommendationRun.Status.PENDING
+        )
+        RecommendationRun.objects.filter(pk=run.pk).update(
+            created_at=timezone.now()
+            - timedelta(seconds=settings.RECOMMENDATION_STALE_SECONDS + 1)
+        )
+        response = self.client.get(reverse("run_status", args=[run.pk]))
+        run.refresh_from_db()
+        self.assertEqual(run.status, RecommendationRun.Status.FAILED)
+        self.assertContains(response, "took too long")
+
+    def test_run_status_is_scoped_to_owner(self) -> None:
+        run = RecommendationRun.objects.create(
+            user=self.other, inputs={}, results=GAMES
+        )
+        self.client.force_login(self.user)
+        self.assertEqual(
+            self.client.get(reverse("run_status", args=[run.pk])).status_code, 404
+        )
+        self.assertEqual(
+            self.client.post(reverse("run_cancel", args=[run.pk])).status_code, 404
+        )
+
+    def test_pending_only_update_skips_finished_runs(self) -> None:
+        run = RecommendationRun.objects.create(user=self.user, inputs={}, results=GAMES)
+        _update_if_pending(
+            run.pk, status=RecommendationRun.Status.FAILED, error="took too long"
+        )
+        run.refresh_from_db()
+        self.assertEqual(run.status, RecommendationRun.Status.DONE)
+        self.assertEqual(run.error, "")
+
+    def test_run_status_heading_follows_polling_page(self) -> None:
+        run = RecommendationRun.objects.create(user=self.user, inputs={}, results=GAMES)
+        self.assertContains(
+            self.client.get(reverse("run_status", args=[run.pk])), "Latest picks"
+        )
+        self.assertContains(
+            self.client.get(reverse("run_status", args=[run.pk]) + "?page=run"),
+            "Your picks",
+        )
 
     def test_account_isolation_and_feedback_prefill(self) -> None:
         run = RecommendationRun.objects.create(

@@ -49,6 +49,8 @@ urlpatterns = [
         name="undo_dismissal",
     ),
     path("runs/<int:pk>/", views.RunDetailView.as_view(), name="run"),
+    path("runs/<int:pk>/status/", views.RunStatusView.as_view(), name="run_status"),
+    path("runs/<int:pk>/cancel/", views.CancelRunView.as_view(), name="run_cancel"),
     path(
         "runs/<int:pk>/dismiss/",
         views.DismissSuggestionView.as_view(),

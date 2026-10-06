@@ -11,11 +11,10 @@
         <h2>Anything in particular?</h2>
         <form method="post" action="{% url 'recommend' %}"
               hx-post="{% url 'recommend' %}" hx-target="#results" hx-swap="outerHTML"
-              hx-indicator="#thinking" hx-disabled-elt="find button" hx-request='{"timeout":300000}'>
+              hx-disabled-elt="find button" hx-request='{"timeout":300000}'>
           {% csrf_token %}
           {{ recommendation_form.as_p }}
-          <button>Find games</button>
-          <span id="thinking" class="htmx-indicator" role="status">Looking for games... this may take a minute.</span>
+          <button type="submit">Find games</button>
         </form>
       </section>
       <section class="panel">

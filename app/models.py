@@ -7,6 +7,7 @@ from django.conf import settings
 from django.db import models
 from django.db.models import Prefetch, Q
 from django.db.models.base import ModelBase
+from django.utils import timezone
 
 
 def normalize_title(title: str) -> str:
@@ -177,13 +178,51 @@ def _steam_appids_for_titles(titles: list[str]) -> dict[str, list[str]]:
 
 
 class RecommendationRun(models.Model):
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        RUNNING = "running", "Running"
+        DONE = "done", "Done"
+        FAILED = "failed", "Failed"
+        CANCELLED = "cancelled", "Cancelled"
+
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     created_at = models.DateTimeField(auto_now_add=True)
     inputs = models.JSONField()
     results = models.JSONField(default=list)
+    # DONE is the default so runs created directly (admin, scripts, older code)
+    # are treated as finished; the async path sets PENDING explicitly.
+    status = models.CharField(max_length=9, choices=Status.choices, default=Status.DONE)
+    error = models.TextField(blank=True, default="")
 
     def __str__(self) -> str:
         return f"Recommendation run {self.pk} for {self.user}"
+
+    @property
+    def is_pending(self) -> bool:
+        return self.status in {self.Status.PENDING, self.Status.RUNNING}
+
+    @property
+    def elapsed_seconds(self) -> int:
+        return int((timezone.now() - self.created_at).total_seconds())
+
+    # Wait-state copy keyed off elapsed seconds. Rendered into the page as
+    # JSON so the client timer advances the copy from the same thresholds.
+    STAGES = [
+        (0, "Reading your reasons"),
+        (5, "Weighing what you loved"),
+        (12, "Checking your backlog"),
+        (22, "Writing your picks"),
+        (60, "Still writing. Good picks take longer to write."),
+    ]
+
+    @property
+    def stage(self) -> str:
+        seconds = self.elapsed_seconds
+        label = self.STAGES[0][1]
+        for at, text in self.STAGES:
+            if seconds >= at:
+                label = text
+        return label
 
     @property
     def illustrated_results(self) -> list[dict[str, str | bool]]:
