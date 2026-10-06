@@ -134,6 +134,22 @@ class AppTests(TestCase):
         self.assertEqual(self.preference.sentiment, -1)
         self.assertEqual(self.preference.reason, "Changed my mind")
 
+    def test_first_rating_confirms_once_then_stays_quiet(self) -> None:
+        fresh = get_user_model().objects.create_user("fresh", password="quiet-otter-9")
+        self.client.force_login(fresh)
+        response = self.client.post(
+            reverse("preference_new"),
+            {"subject": "Outer Wilds", "sentiment": 1, "reason": "Exploration"},
+            follow=True,
+        )
+        self.assertContains(response, "one game rated")
+        response = self.client.post(
+            reverse("preference_new"),
+            {"subject": "Portal 2", "sentiment": 2, "reason": "Co-op with a friend"},
+            follow=True,
+        )
+        self.assertNotContains(response, "one game rated")
+
     def test_punctuation_insensitive_title_lookup_uses_index(self) -> None:
         game = Game.objects.create(title="Marvel’s Spider-Man Remastered")
         GameIdentity.objects.create(game=game, provider="steam", external_id="1817070")

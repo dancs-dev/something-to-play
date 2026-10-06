@@ -42,7 +42,7 @@ p { margin: 12px 0; }
 label { display: block; font-size: 13px; font-weight: 600; margin: 18px 0 7px; }
 input, select, textarea { width: 100%; min-width: 0; padding: 12px; border: 1px solid #aaa99b; border-radius: 2px; background: var(--panel); color: var(--text); font: inherit; }
 textarea { resize: vertical; }
-input::placeholder, textarea::placeholder { color: #77786d; font-size: 14px; }
+input::placeholder, textarea::placeholder { color: #6b6c62; font-size: 14px; }
 button, .button { border: 1px solid transparent; border-radius: 2px; background: var(--accent); color: #fffaf2; padding: 13px 21px; cursor: pointer; font: 600 13px/1.4 system-ui, sans-serif; text-decoration: none; display: inline-block; }
 button:hover, .button:hover { background: #82301e; color: #fffaf2; }
 button:disabled { opacity: .6; cursor: wait; }

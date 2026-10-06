@@ -213,6 +213,9 @@ class PreferenceFormMixin(LoginRequiredMixin, ModelFormMixin, ProcessFormView):
         except SteamError as exc:
             form.add_error(None, str(exc))
             return self.form_invalid(form)
+        had_taste = Preference.objects.filter(
+            user=_authenticated_user(self.request), sentiment__in=[-1, 1, 2]
+        ).exists()
         with transaction.atomic():
             existing = self.get_queryset().filter(game=game).first()
             if existing and existing != self.object:
@@ -227,6 +230,8 @@ class PreferenceFormMixin(LoginRequiredMixin, ModelFormMixin, ProcessFormView):
                 self.object.user = _authenticated_user(self.request)
                 self.object.game = game
                 self.object.save()
+        if not had_taste and form.cleaned_data["sentiment"] in (-1, 1, 2):
+            messages.success(self.request, "Got it. That's one game rated.")
         return HttpResponseRedirect(self.get_success_url())
 
 

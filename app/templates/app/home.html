@@ -31,6 +31,7 @@
       <h2>Add a game</h2>
       <p>Search for a game by title. You can add it yourself if it's not in the catalogue.</p>
       <a class="button" href="{% url 'game_search' %}">Find a game</a>
+      <p class="muted">One rating is enough to start. A few more, with reasons, and picks get sharper.</p>
       {% if not steam_connected %}<p><a href="{% url 'settings' %}">Import your Steam library</a></p>{% endif %}
     </section>
   {% endif %}

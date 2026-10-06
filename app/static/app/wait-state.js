@@ -27,6 +27,8 @@
     stop();
     const wait = document.querySelector('.wait');
     if (!wait) return;
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    wait.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
     const secondsEl = wait.querySelector('.wait-seconds');
     const stageEl = wait.querySelector('.wait-stage');
     const stageList = stages();
