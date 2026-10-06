@@ -8,3 +8,9 @@ __pycache__/
 staticfiles/
 evals/
 .coverage
+.impeccable
+.codex
+.agents
+IDEAS.md
+PRODUCT.md
+old
