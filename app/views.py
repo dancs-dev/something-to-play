@@ -82,19 +82,28 @@ def _authenticated_user(request: HttpRequest) -> User:
     return cast(User, request.user)
 
 
-def _update_if_pending(run_id: int, **fields: object) -> None:
-    """Update a run only while it is still pending.
-
-    A run that finished between the caller's read and this update keeps its
-    state, so results are never overwritten by a stale failure or a cancel.
-    """
-    RecommendationRun.objects.filter(
-        pk=run_id,
-        status__in=[
-            RecommendationRun.Status.PENDING,
-            RecommendationRun.Status.RUNNING,
-        ],
-    ).update(**fields)
+def _home_context(
+    request: HttpRequest,
+    *,
+    form: RecommendationForm | None = None,
+    **extra: object,
+) -> dict[str, object]:
+    """Context shared by the home page and the recommendation result render."""
+    user = _authenticated_user(request)
+    return {
+        "has_taste": Preference.objects.filter(
+            user=user, sentiment__in=[-1, 1, 2]
+        ).exists(),
+        "steam_connected": LinkedAccount.objects.filter(
+            user=user, provider="steam"
+        ).exists(),
+        "recommendation_form": form or RecommendationForm(),
+        "run": RecommendationRun.objects.filter(user=user)
+        .exclude(status=RecommendationRun.Status.CANCELLED)
+        .order_by("-created_at")
+        .first(),
+        **extra,
+    }
 
 
 class HomeView(TemplateView):
@@ -103,19 +112,7 @@ class HomeView(TemplateView):
     def get_context_data(self, **kwargs: BuiltinObject) -> dict[str, BuiltinObject]:
         context = super().get_context_data(**kwargs)
         if self.request.user.is_authenticated:
-            context.update(
-                has_taste=Preference.objects.filter(
-                    user=self.request.user, sentiment__in=[-1, 1, 2]
-                ).exists(),
-                steam_connected=LinkedAccount.objects.filter(
-                    user=self.request.user, provider="steam"
-                ).exists(),
-                recommendation_form=RecommendationForm(),
-                run=RecommendationRun.objects.filter(user=self.request.user)
-                .exclude(status=RecommendationRun.Status.CANCELLED)
-                .order_by("-created_at")
-                .first(),
-            )
+            context.update(_home_context(self.request))
         return context
 
 
@@ -134,11 +131,11 @@ class SteamArtView(LoginRequiredMixin, View):
         return HttpResponseRedirect(image_url)
 
 
-class ProfileView(LoginRequiredMixin, TemplateView):
-    def get(
-        self, request: HttpRequest, *args: BuiltinObject, **kwargs: BuiltinObject
-    ) -> HttpResponse:
-        return redirect("home")
+def _library_or(request: HttpRequest, default: str) -> str:
+    """Return to the library when ?next=library, else the given default."""
+    if request.GET.get("next") == "library":
+        return cast(str, reverse_lazy("library"))
+    return default
 
 
 class PreferenceFormMixin(LoginRequiredMixin, ModelFormMixin, ProcessFormView):
@@ -153,11 +150,7 @@ class PreferenceFormMixin(LoginRequiredMixin, ModelFormMixin, ProcessFormView):
     success_url = reverse_lazy("home")
 
     def get_success_url(self) -> str:
-        return (
-            cast(str, reverse_lazy("library"))
-            if self.request.GET.get("next") == "library"
-            else super().get_success_url()
-        )
+        return _library_or(self.request, super().get_success_url())
 
     def get_queryset(self) -> QuerySet[Preference]:
         return Preference.objects.filter(user=_authenticated_user(self.request))
@@ -249,11 +242,7 @@ class PreferenceDeleteView(LoginRequiredMixin, DeleteView):
     success_url = reverse_lazy("home")
 
     def get_success_url(self) -> str:
-        return (
-            cast(str, reverse_lazy("library"))
-            if self.request.GET.get("next") == "library"
-            else super().get_success_url()
-        )
+        return _library_or(self.request, super().get_success_url())
 
     def get_queryset(self) -> QuerySet[Preference]:
         return Preference.objects.filter(user=_authenticated_user(self.request))
@@ -269,22 +258,7 @@ class RecommendationView(LoginRequiredMixin, FormView):
     ) -> HttpResponse:
         if self.request.headers.get("HX-Request") == "true":
             return render(self.request, "app/results.html", result)
-        context = {
-            "has_taste": Preference.objects.filter(
-                user=_authenticated_user(self.request), sentiment__in=[-1, 1, 2]
-            ).exists(),
-            "steam_connected": LinkedAccount.objects.filter(
-                user=_authenticated_user(self.request), provider="steam"
-            ).exists(),
-            "recommendation_form": form or RecommendationForm(),
-            "run": RecommendationRun.objects.filter(
-                user=_authenticated_user(self.request)
-            )
-            .exclude(status=RecommendationRun.Status.CANCELLED)
-            .order_by("-created_at")
-            .first(),
-            **result,
-        }
+        context = _home_context(self.request, form=form, **result)
         return render(self.request, self.template_name, context)
 
     def form_valid(self, form: RecommendationForm) -> HttpResponse:
@@ -349,7 +323,7 @@ class RunStatusView(LoginRequiredMixin, View):
                 # Nothing to swap yet; the poller keeps running. Avoids
                 # re-rendering (and re-announcing) the wait state every poll.
                 return HttpResponse(status=204)
-            _update_if_pending(
+            RecommendationRun.update_if_pending(
                 run.pk,
                 status=RecommendationRun.Status.FAILED,
                 error="The recommendation took too long. Try again.",
@@ -365,7 +339,9 @@ class CancelRunView(LoginRequiredMixin, View):
         run = get_object_or_404(
             RecommendationRun, pk=pk, user=_authenticated_user(request)
         )
-        _update_if_pending(run.pk, status=RecommendationRun.Status.CANCELLED)
+        RecommendationRun.update_if_pending(
+            run.pk, status=RecommendationRun.Status.CANCELLED
+        )
         run.refresh_from_db()
         if request.headers.get("HX-Request") == "true":
             return render(request, "app/results.html", {"run": run})

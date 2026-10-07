@@ -6,6 +6,16 @@ This is intended for self-hosting by one person or a small group of trusted user
 
 ![Game suggestions after rating a game](docs/demo-home.png)
 
+## Design choices
+
+I kept the app as a single Django project, with server-rendered templates and htmx for submitting requests and polling for results. Most of the interface is ordinary forms and links. This keeps the browser code small and lets Django handle authentication, validation, and access to each user's data.
+
+SQLite stores the library and ratings, and django-q2 uses the same database to queue recommendations. That keeps self-hosting straightforward: the web process and worker share one database file. The tradeoff is limited write concurrency, which is reasonable for the intended personal or small-group use. I'd revisit the database and queue if the app needed to support a larger workload.
+
+Recommendation calls run in the worker because a model can take a while to answer. Each request saves its ratings and candidate lists together, so edits made while it is queued affect the next request. Workers claim a run atomically, and a late response cannot overwrite a cancellation or a timeout.
+
+The model interprets the player's reasons and writes the suggestions. The app validates the response with Pydantic. Replay and backlog picks must come from the supplied candidate lists, and discovery picks exclude known or dismissed games.
+
 ## Installation
 
 ### Prerequisites
@@ -20,7 +30,7 @@ Recommendations need an AI provider. By default, the app uses [Ollama](https://o
 ollama pull gemma4
 ```
 
-To use another OpenAI-compatible Chat Completions provider, copy `.env.example` to `.env` and set `OPENAI_COMPATIBLE_BASE_URL`, `OPENAI_COMPATIBLE_MODEL`, and, if required, `OPENAI_COMPATIBLE_API_KEY`. The model endpoint must support JSON mode.
+To use another OpenAI-compatible Chat Completions provider, copy `.env.example` to `.env` and set `OPENAI_COMPATIBLE_BASE_URL`, `OPENAI_COMPATIBLE_MODEL`, and, if required, `OPENAI_COMPATIBLE_API_KEY`. The model endpoint must support structured output through `response_format` with `type: json_schema` and `strict: true`.
 
 ### Optional Steam integration
 
@@ -104,3 +114,4 @@ Every case runs against every profile through the same code path the app uses. T
 uv run --env-file .env python manage.py eval_recommendations
 ```
 
+In my testing, DeepSeek Flash v4.1 has been fairly reliable, with quick responses and relatively low cost. I also like its picks and find it has an engaging writing style.

@@ -197,6 +197,19 @@ class RecommendationRun(models.Model):
     def __str__(self) -> str:
         return f"Recommendation run {self.pk} for {self.user}"
 
+    @classmethod
+    def update_if_pending(cls, run_id: int, **fields: object) -> int:
+        """Apply fields only while the run is pending or running.
+
+        A run that finished or was cancelled between the caller's read and
+        this update keeps its state, so settled results are never overwritten
+        by a late failure, a cancel, or a stale poll.
+        """
+        return cls.objects.filter(
+            pk=run_id,
+            status__in=[cls.Status.PENDING, cls.Status.RUNNING],
+        ).update(**fields)
+
     @property
     def is_pending(self) -> bool:
         return self.status in {self.Status.PENDING, self.Status.RUNNING}

@@ -10,8 +10,8 @@ urlpatterns = [
     path("signup/", accounts.SignupView.as_view(), name="signup"),
     path("login/", auth_views.LoginView.as_view(), name="login"),
     path("logout/", auth_views.LogoutView.as_view(), name="logout"),
-    path("profile/", views.ProfileView.as_view(), name="profile"),
-    path("onboarding/", views.ProfileView.as_view(), name="onboarding"),
+    path("profile/", views.HomeView.as_view(), name="profile"),
+    path("onboarding/", views.HomeView.as_view(), name="onboarding"),
     path(
         "preferences/new/", views.PreferenceCreateView.as_view(), name="preference_new"
     ),

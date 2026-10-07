@@ -8,6 +8,7 @@ from typing import NotRequired, TypedDict
 import httpx
 from django.conf import settings
 from django.contrib.auth.models import User
+from django.db import transaction
 from django_q.tasks import async_task
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -387,8 +388,12 @@ def get_recent_recommendations(
     limit: int = 20,
     exclude: list[str] | None = None,
 ) -> list[str]:
+    # Only settled runs have picks; the in-flight run is empty and would
+    # otherwise consume the runs=1 slot, hiding the previous completed run.
     recent_runs = (
-        RecommendationRun.objects.filter(user=user)
+        RecommendationRun.objects.filter(
+            user=user, status=RecommendationRun.Status.DONE
+        )
         .order_by("-created_at")
         .values_list("results", flat=True)[:runs]
     )
@@ -430,22 +435,17 @@ def _taste_for(preferences: Iterable[Preference]) -> list[Taste]:
     ]
 
 
-def _provider_arguments(
-    user: User,
-) -> tuple[list[Taste], Owned, list[str], list[str]]:
-    """Build the provider arguments from the user's current saved data."""
+def _provider_inputs(user: User, context: str) -> dict[str, object]:
     preferences = list(Preference.objects.filter(user=user).select_related("game"))
-    taste = _taste_for(preferences)
-    owned_titles = list(
-        Ownership.objects.filter(account__user=user, is_active=True)
-        .order_by("game__title")
-        .values_list("game__title", flat=True)
-        .distinct()
-    )
     owned: Owned = {
         "replay": [p.game.title for p in preferences if p.sentiment in {1, 2}],
         "backlog": [p.game.title for p in preferences if p.sentiment == -2],
-        "all": owned_titles,
+        "all": list(
+            Ownership.objects.filter(account__user=user, is_active=True)
+            .order_by("game__title")
+            .values_list("game__title", flat=True)
+            .distinct()
+        ),
         "known": [p.game.title for p in preferences],
         "dismissed": list(
             DismissedSuggestion.objects.filter(user=user).values_list(
@@ -453,34 +453,37 @@ def _provider_arguments(
             )
         ),
     }
-    last_recommendations = get_recent_recommendations(user=user, runs=1)
-    recent_recommendations = get_recent_recommendations(
-        user=user, runs=5, limit=15, exclude=last_recommendations
-    )
-    return taste, owned, last_recommendations, recent_recommendations
+    last = get_recent_recommendations(user=user, runs=1)
+    return {
+        "taste": _taste_for(preferences),
+        "owned": owned,
+        "last_recommendations": last,
+        "recent_recommendations": get_recent_recommendations(
+            user=user, runs=5, limit=15, exclude=last
+        ),
+        "request": context,
+        "model": settings.OPENAI_COMPATIBLE_MODEL,
+        "reasoning_effort": settings.OPENAI_COMPATIBLE_REASONING_EFFORT,
+        "prompt_version": PROMPT_VERSION,
+    }
 
 
+@transaction.atomic
 def create_pending_run(user: User, context: str = "") -> RecommendationRun:
     """Save an unfinished run so the request can return before the AI answers.
 
     Raises:
         RecommendationError: The user has no rated games to work with.
     """
-    taste = _taste_for(Preference.objects.filter(user=user).select_related("game"))
-    if not taste:
+    inputs = _provider_inputs(user, context)
+    if not inputs["taste"]:
         raise RecommendationError(
             "Add a game you like or dislike first, or mark one Loved, "
             "so the AI has something to work with."
         )
     return RecommendationRun.objects.create(
         user=user,
-        inputs={
-            "taste": taste,
-            "request": context,
-            "model": settings.OPENAI_COMPATIBLE_MODEL,
-            "reasoning_effort": settings.OPENAI_COMPATIBLE_REASONING_EFFORT,
-            "prompt_version": PROMPT_VERSION,
-        },
+        inputs=inputs,
         status=RecommendationRun.Status.PENDING,
     )
 
@@ -497,28 +500,37 @@ def _finish_run(
         fields["results"] = results
     if error:
         fields["error"] = error
-    # Exclude a cancel that raced in while the provider was answering.
-    RecommendationRun.objects.filter(pk=run_id).exclude(
-        status=RecommendationRun.Status.CANCELLED
-    ).update(**fields)
+    # A cancel or stale failure that raced in wins; settled runs are not overwritten.
+    RecommendationRun.update_if_pending(run_id, **fields)
 
 
 def run_recommendation(run_id: int) -> None:
     """Provider work for one run. Called by the django-q2 worker."""
     run = RecommendationRun.objects.select_related("user").get(pk=run_id)
-    if run.status == RecommendationRun.Status.CANCELLED:
-        return
-    RecommendationRun.objects.filter(pk=run_id).exclude(
-        status=RecommendationRun.Status.CANCELLED
+    # Claim only a run nobody has started yet, so a duplicate dispatch of the
+    # same id cannot run the provider twice.
+    claimed = RecommendationRun.objects.filter(
+        pk=run_id, status=RecommendationRun.Status.PENDING
     ).update(status=RecommendationRun.Status.RUNNING)
+    if not claimed:
+        # Cancelled, already claimed, or settled; drop the work.
+        return
     try:
-        taste, owned, last, recent = _provider_arguments(run.user)
+        if "owned" not in run.inputs:
+            # Runs queued before snapshots were added need a coherent set of
+            # execution-time inputs rather than old taste with live candidates.
+            with transaction.atomic():
+                run.inputs = _provider_inputs(run.user, run.inputs.get("request", ""))
+                if not RecommendationRun.update_if_pending(run_id, inputs=run.inputs):
+                    return
         results = ask_provider(
-            taste,
+            run.inputs["taste"],
             run.inputs.get("request", ""),
-            owned=owned,
-            last_recommendations=last,
-            recent_recommendations=recent,
+            owned=run.inputs["owned"],
+            last_recommendations=run.inputs["last_recommendations"],
+            recent_recommendations=run.inputs["recent_recommendations"],
+            model=run.inputs.get("model"),
+            reasoning_effort=run.inputs.get("reasoning_effort"),
         )
     except RecommendationError as exc:
         _finish_run(run_id, RecommendationRun.Status.FAILED, error=str(exc))
@@ -541,11 +553,3 @@ def enqueue_recommendation(run_id: int) -> None:
         run_id,
         sync=bool(settings.Q_CLUSTER.get("sync", False)),
     )
-
-
-def create_run(user: User, context: str = "") -> RecommendationRun:
-    """Run the provider synchronously and return the finished run."""
-    run = create_pending_run(user, context)
-    run_recommendation(run.pk)
-    run.refresh_from_db()
-    return run

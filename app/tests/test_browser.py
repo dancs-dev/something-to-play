@@ -137,6 +137,8 @@ class BrowserSmoke(StaticLiveServerTestCase):
                 },
                 last_recommendations=[],
                 recent_recommendations=[],
+                model=settings.OPENAI_COMPATIBLE_MODEL,
+                reasoning_effort=settings.OPENAI_COMPATIBLE_REASONING_EFFORT,
             )
             self.assertEqual(
                 page.url.rstrip("/"), self.live_server_url

@@ -28,11 +28,12 @@ from app.recommendations import (
     Taste,
     _finish_run,
     ask_provider,
-    create_run,
+    create_pending_run,
     get_recent_recommendations,
     run_recommendation,
 )
-from app.views import _update_if_pending, game_by_title
+from app.tests import create_run
+from app.views import game_by_title
 
 GAMES = [
     {
@@ -399,6 +400,8 @@ class AppTests(TestCase):
             },
             last_recommendations=[],
             recent_recommendations=[],
+            model=settings.OPENAI_COMPATIBLE_MODEL,
+            reasoning_effort=settings.OPENAI_COMPATIBLE_REASONING_EFFORT,
         )
         self.assertContains(response, "The Talos Principle")
         self.assertContains(
@@ -563,12 +566,81 @@ class AppTests(TestCase):
 
     def test_pending_only_update_skips_finished_runs(self) -> None:
         run = RecommendationRun.objects.create(user=self.user, inputs={}, results=GAMES)
-        _update_if_pending(
+        RecommendationRun.update_if_pending(
             run.pk, status=RecommendationRun.Status.FAILED, error="took too long"
         )
         run.refresh_from_db()
         self.assertEqual(run.status, RecommendationRun.Status.DONE)
         self.assertEqual(run.error, "")
+
+    def test_worker_does_not_reclaim_a_running_run(self) -> None:
+        run = RecommendationRun.objects.create(
+            user=self.user, inputs={}, status=RecommendationRun.Status.RUNNING
+        )
+        with patch("app.recommendations.ask_provider", return_value=[]) as ask:
+            run_recommendation(run.pk)
+        ask.assert_not_called()
+
+    def test_last_recommendations_come_from_previous_completed_run(self) -> None:
+        """The in-flight run must not hide the previous run from repeat checks."""
+        with patch(
+            "app.recommendations.ask_provider",
+            return_value=[{"category": "discover", "title": "Old pick"}],
+        ):
+            create_run(self.user)
+        with patch("app.recommendations.ask_provider", return_value=[]) as ask:
+            create_run(self.user)
+        self.assertEqual(ask.call_args.kwargs["last_recommendations"], ["Old pick"])
+
+    def test_worker_uses_saved_inputs_snapshot(self) -> None:
+        run = create_pending_run(self.user)
+        self.preference.sentiment = -1
+        self.preference.reason = "Edited after enqueue"
+        self.preference.save(update_fields=["sentiment", "reason"])
+        Preference.objects.create(
+            user=self.user,
+            game=Game.objects.create(title="New backlog game"),
+            sentiment=-2,
+        )
+        RecommendationRun.objects.create(user=self.user, inputs={}, results=GAMES)
+        with patch("app.recommendations.ask_provider", return_value=[]) as ask:
+            run_recommendation(run.pk)
+        self.assertEqual(ask.call_args.args[0][0]["reason"], "Clever puzzles")
+        self.assertEqual(
+            ask.call_args.kwargs["owned"],
+            {
+                "replay": ["Portal 2"],
+                "backlog": [],
+                "all": [],
+                "known": ["Portal 2"],
+                "dismissed": [],
+            },
+        )
+        self.assertEqual(ask.call_args.kwargs["owned"], run.inputs["owned"])
+        self.assertEqual(ask.call_args.kwargs["last_recommendations"], [])
+        self.assertEqual(ask.call_args.kwargs["recent_recommendations"], [])
+        self.assertEqual(ask.call_args.kwargs["model"], run.inputs["model"])
+        self.assertEqual(
+            ask.call_args.kwargs["reasoning_effort"],
+            run.inputs["reasoning_effort"],
+        )
+
+    def test_worker_snapshots_legacy_queued_run_at_execution(self) -> None:
+        run = create_pending_run(self.user, "Something relaxing")
+        del run.inputs["owned"]
+        run.save(update_fields=["inputs"])
+        self.preference.sentiment = -1
+        self.preference.reason = "Edited after enqueue"
+        self.preference.save(update_fields=["sentiment", "reason"])
+        with patch("app.recommendations.ask_provider", return_value=GAMES) as ask:
+            run_recommendation(run.pk)
+        run.refresh_from_db()
+        self.assertEqual(run.status, RecommendationRun.Status.DONE)
+        self.assertEqual(ask.call_args.args[0], run.inputs["taste"])
+        self.assertEqual(ask.call_args.args[0][0]["feeling"], "dislike")
+        self.assertEqual(ask.call_args.kwargs["owned"], run.inputs["owned"])
+        self.assertEqual(run.inputs["owned"]["replay"], [])
+        self.assertEqual(ask.call_args.args[1], "Something relaxing")
 
     def test_run_status_heading_follows_polling_page(self) -> None:
         run = RecommendationRun.objects.create(user=self.user, inputs={}, results=GAMES)

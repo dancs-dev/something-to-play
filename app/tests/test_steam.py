@@ -234,7 +234,8 @@ class SteamTests(TestCase):
         self.client.post(reverse("library_curate", args=[game.pk]), {"sentiment": 0})
         pref.refresh_from_db()
         self.assertEqual((pref.sentiment, pref.reason), (0, "Good story"))
-        from app.recommendations import RecommendationError, create_run
+        from app.recommendations import RecommendationError
+        from app.tests import create_run
 
         with (
             patch("app.recommendations.ask_provider") as ask,
