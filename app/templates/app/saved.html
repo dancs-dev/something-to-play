@@ -1,0 +1,29 @@
+{% extends 'app/base.html' %}
+{% block title %}Saved{% endblock %}
+{% block content %}
+  <p class="eyebrow">YOUR SHELF</p>
+  <h1>Saved for later</h1>
+  <p class="lead">Picks that looked good but weren't right for the moment. They wait here.</p>
+  <section class="panel library-section">
+    <h2>Want to play <span class="muted">{{ saved|length }}</span></h2>
+    {% if saved %}
+      <div class="grid recommendations">
+      {% for item in saved %}
+        <article class="card">
+          {% if item.image_url %}<img class="recommendation-art" src="{{ item.image_url }}" alt="" loading="lazy" width="460" height="215" onerror="this.onerror=()=>this.remove();this.src='{% url 'steam_art' item.steam_appid %}'">{% endif %}
+          <h3>{% if item.steam_appid %}<a href="https://store.steampowered.com/app/{{ item.steam_appid }}/" target="_blank" rel="noopener noreferrer">{{ item.row.game.title }}</a>{% else %}{{ item.row.game.title }}{% endif %}</h3>
+          {% if item.row.rationale %}<p>{{ item.row.rationale }}</p>{% endif %}
+          {% if item.row.drawback %}<p class="drawback"><strong>You might not enjoy:</strong> {{ item.row.drawback }}</p>{% endif %}
+          <form method="post" action="{% url 'saved_action' item.row.pk %}">
+            {% csrf_token %}
+            <button class="quiet" name="action" value="played">Played it</button>
+            <button class="quiet" name="action" value="remove">Remove</button>
+          </form>
+        </article>
+      {% endfor %}
+      </div>
+    {% else %}
+      <p>Nothing saved yet. When a pick sounds right but the timing doesn't, save it from your picks.</p>
+    {% endif %}
+  </section>
+{% endblock %}

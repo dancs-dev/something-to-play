@@ -9,6 +9,8 @@ from django.db.models import Prefetch, Q
 from django.db.models.base import ModelBase
 from django.utils import timezone
 
+from .steam import STEAM_ART_BASE_URL
+
 
 def normalize_title(title: str) -> str:
     return " ".join(re.findall(r"\w+", title.casefold()))
@@ -177,6 +179,55 @@ def _steam_appids_for_titles(titles: list[str]) -> dict[str, list[str]]:
     return matches
 
 
+def _illustrated(items: list[dict[str, str]], user_id: int) -> list[dict[str, str]]:
+    """Attach Steam header art and a store appid to dicts with title and category.
+
+    Ambiguous titles resolve to a game the user owns for replay and backlog
+    picks, mirroring how results cards pick their art.
+    """
+    matches = _steam_appids_for_titles([item.get("title", "") for item in items])
+    ambiguous = {
+        appid
+        for item in items
+        if item.get("category") in {"replay", "backlog"}
+        for appids in [matches[item.get("title", "")]]
+        if len(appids) > 1
+        for appid in appids
+    }
+    owned = (
+        set(
+            GameIdentity.objects.filter(
+                provider="steam",
+                external_id__in=ambiguous,
+                game__ownership__account__user_id=user_id,
+                game__ownership__is_active=True,
+            ).values_list("external_id", flat=True)
+        )
+        if ambiguous
+        else set()
+    )
+    illustrated = []
+    for item in items:
+        title = item.get("title", "")
+        appids = matches[title]
+        if len(appids) > 1 and item.get("category") in {"replay", "backlog"}:
+            appids = [appid for appid in appids if appid in owned] or appids
+        appid = appids[0] if appids else ""
+        valid_appid = appid if appid and appid.isascii() and appid.isdecimal() else ""
+        illustrated.append(
+            item
+            | {
+                "image_url": (
+                    f"{STEAM_ART_BASE_URL}{valid_appid}/header.jpg"
+                    if valid_appid
+                    else ""
+                ),
+                "steam_appid": valid_appid,
+            }
+        )
+    return illustrated
+
+
 class RecommendationRun(models.Model):
     class Status(models.TextChoices):
         PENDING = "pending", "Pending"
@@ -245,62 +296,32 @@ class RecommendationRun(models.Model):
                 result.get("category"), 3
             ),
         )
-        matches = _steam_appids_for_titles(
-            [result.get("title", "") for result in results]
-        )
-        ambiguous = {
-            appid
-            for result in results
-            if result.get("category") in {"replay", "backlog"}
-            for appids in [matches[result.get("title", "")]]
-            if len(appids) > 1
-            for appid in appids
-        }
-        owned = (
+        illustrated = _illustrated(results, self.user_id)
+        saved = (
             set(
-                GameIdentity.objects.filter(
-                    provider="steam",
-                    external_id__in=ambiguous,
-                    game__ownership__account__user=self.user,
-                    game__ownership__is_active=True,
-                ).values_list("external_id", flat=True)
+                SavedSuggestion.objects.filter(user_id=self.user_id).values_list(
+                    "game__normalized_title", flat=True
+                )
             )
-            if ambiguous
+            if results
             else set()
         )
         dismissed = (
             set(
-                DismissedSuggestion.objects.filter(user=self.user).values_list(
+                DismissedSuggestion.objects.filter(user_id=self.user_id).values_list(
                     "game__normalized_title", flat=True
                 )
             )
             if any(result.get("category") == "discover" for result in results)
             else set()
         )
-        illustrated = []
-        for result in results:
-            title = result.get("title", "")
-            appids = matches[title]
-            if len(appids) > 1 and result.get("category") in {"replay", "backlog"}:
-                appids = [appid for appid in appids if appid in owned] or appids
-            appid = appids[0] if appids else ""
-            valid_appid = (
-                appid if appid and appid.isascii() and appid.isdecimal() else ""
+        keyed = []
+        for result in illustrated:
+            key = normalize_title(result.get("title", ""))
+            keyed.append(
+                result | {"dismissed": key in dismissed, "saved": key in saved}
             )
-            image_url = (
-                f"https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{valid_appid}/header.jpg"
-                if valid_appid
-                else ""
-            )
-            illustrated.append(
-                result
-                | {
-                    "image_url": image_url,
-                    "steam_appid": valid_appid,
-                    "dismissed": normalize_title(title) in dismissed,
-                }
-            )
-        return illustrated
+        return keyed
 
 
 class DismissedSuggestion(models.Model):
@@ -311,6 +332,35 @@ class DismissedSuggestion(models.Model):
         constraints = [
             models.UniqueConstraint(
                 fields=["user", "game"], name="unique_user_dismissed_game"
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.user}: {self.game}"
+
+
+class SavedSuggestion(models.Model):
+    """A recommendation the player liked the look of but isn't playing yet.
+
+    The run's copy of the pick is a moving snapshot, so the reason and
+    drawback are stored here at save time; runs come and go, the shelf stays.
+    Playing the game is leaving the shelf: the rating that follows replaces
+    the snapshot.
+    """
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    game = models.ForeignKey(Game, on_delete=models.CASCADE)
+    category = models.CharField(max_length=10, blank=True, default="")
+    rationale = models.TextField(blank=True, default="")
+    drawback = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "game"], name="unique_user_saved_game"
             )
         ]
 

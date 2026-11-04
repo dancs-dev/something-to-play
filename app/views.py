@@ -13,7 +13,7 @@ from django.db.models import Case, Exists, OuterRef, QuerySet, Value, When
 from django.forms import ModelForm
 from django.http import Http404, HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import get_object_or_404, redirect, render
-from django.urls import reverse_lazy
+from django.urls import reverse, reverse_lazy
 from django.utils import timezone
 from django.views.generic import (
     CreateView,
@@ -37,6 +37,8 @@ from .models import (
     Ownership,
     Preference,
     RecommendationRun,
+    SavedSuggestion,
+    _illustrated,
     normalize_title,
 )
 from .recommendations import (
@@ -131,11 +133,13 @@ class SteamArtView(LoginRequiredMixin, View):
         return HttpResponseRedirect(image_url)
 
 
-def _library_or(request: HttpRequest, default: str) -> str:
-    """Return to the library when ?next=library, else the given default."""
-    if request.GET.get("next") == "library":
-        return cast(str, reverse_lazy("library"))
-    return default
+def _next_or(request: HttpRequest, default: str) -> str:
+    """Honor ?next=saved or ?next=library after a preference edit, else default."""
+    targets = {
+        "saved": reverse_lazy("saved"),
+        "library": reverse_lazy("library"),
+    }
+    return cast(str, targets.get(request.GET.get("next", ""), default))
 
 
 class PreferenceFormMixin(LoginRequiredMixin, ModelFormMixin, ProcessFormView):
@@ -150,7 +154,7 @@ class PreferenceFormMixin(LoginRequiredMixin, ModelFormMixin, ProcessFormView):
     success_url = reverse_lazy("home")
 
     def get_success_url(self) -> str:
-        return _library_or(self.request, super().get_success_url())
+        return _next_or(self.request, super().get_success_url())
 
     def get_queryset(self) -> QuerySet[Preference]:
         return Preference.objects.filter(user=_authenticated_user(self.request))
@@ -242,7 +246,7 @@ class PreferenceDeleteView(LoginRequiredMixin, DeleteView):
     success_url = reverse_lazy("home")
 
     def get_success_url(self) -> str:
-        return _library_or(self.request, super().get_success_url())
+        return _next_or(self.request, super().get_success_url())
 
     def get_queryset(self) -> QuerySet[Preference]:
         return Preference.objects.filter(user=_authenticated_user(self.request))
@@ -378,6 +382,93 @@ class DismissSuggestionView(LoginRequiredMixin, View):
                 game__normalized_title=normalize_title(title),
             ).delete()
         return redirect("run", pk=run.pk)
+
+
+class SaveSuggestionView(LoginRequiredMixin, View):
+    http_method_names = ["post"]
+
+    def post(self, request: HttpRequest, pk: int) -> HttpResponse:
+        run = get_object_or_404(
+            RecommendationRun, pk=pk, user=_authenticated_user(request)
+        )
+        title = request.POST.get("title", "")
+        action = request.POST.get("action")
+        result = next(
+            (item for item in run.results if item.get("title") == title), None
+        )
+        if (
+            not title.strip()
+            or len(title) > 200
+            or action not in {"save", "remove"}
+            or result is None
+        ):
+            raise Http404
+
+        if action == "save":
+            fields = {
+                "category": str(result.get("category") or ""),
+                "rationale": str(result.get("rationale") or ""),
+                "drawback": str(result.get("drawback") or ""),
+            }
+            item, created = SavedSuggestion.objects.get_or_create(
+                user=_authenticated_user(request),
+                game=find_game(title),
+                defaults=fields,
+            )
+            if not created:
+                # A fresh save wins: the newest pick's wording.
+                for key, value in fields.items():
+                    setattr(item, key, value)
+                item.save(update_fields=[*fields, "updated_at"])
+            # Wanting to play a game is the opposite of hiding it.
+            DismissedSuggestion.objects.filter(
+                user=_authenticated_user(request),
+                game__normalized_title=normalize_title(title),
+            ).delete()
+        else:
+            SavedSuggestion.objects.filter(
+                user=_authenticated_user(request),
+                game__normalized_title=normalize_title(title),
+            ).delete()
+        return redirect("run", pk=run.pk)
+
+
+class SavedActionView(LoginRequiredMixin, View):
+    """Leave the shelf: played routes into rating, remove just drops it."""
+
+    http_method_names = ["post"]
+
+    def post(self, request: HttpRequest, pk: int) -> HttpResponse:
+        item = get_object_or_404(
+            SavedSuggestion, pk=pk, user=_authenticated_user(request)
+        )
+        action = request.POST.get("action")
+        if action not in {"played", "remove"}:
+            raise Http404
+        game_id = item.game_id
+        item.delete()
+        if action == "played":
+            # The shelf row holds the game id, so skip the title search and
+            # land straight on the rating form; rating returns to the shelf.
+            return redirect(f"{reverse('preference_new')}?game={game_id}&next=saved")
+        return redirect("saved")
+
+
+class SavedView(LoginRequiredMixin, TemplateView):
+    template_name = "app/saved.html"
+
+    def get_context_data(self, **kwargs: BuiltinObject) -> dict[str, BuiltinObject]:
+        context = super().get_context_data(**kwargs)
+        user = _authenticated_user(self.request)
+        saved = list(SavedSuggestion.objects.filter(user=user).select_related("game"))
+        items = _illustrated(
+            [{"title": row.game.title, "category": row.category} for row in saved],
+            user.pk,
+        )
+        context["saved"] = [
+            {"row": row} | item for row, item in zip(saved, items, strict=True)
+        ]
+        return context
 
 
 class HistoryView(LoginRequiredMixin, TemplateView):

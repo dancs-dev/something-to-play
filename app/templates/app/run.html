@@ -1,7 +1,7 @@
 {% extends 'app/base.html' %}
 {% block title %}Your game suggestions{% endblock %}
 {% block content %}
-  <p class="eyebrow">SAVED RECOMMENDATIONS</p>
+  <p class="eyebrow">PICKS FOR YOU</p>
   <h1>Your game suggestions</h1>
   {% if run.inputs.request %}<p class="lead">{{ run.inputs.request }}</p>{% endif %}
   <p><a href="{% url 'home' %}">Find more games -></a></p>

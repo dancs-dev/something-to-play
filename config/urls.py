@@ -56,4 +56,15 @@ urlpatterns = [
         views.DismissSuggestionView.as_view(),
         name="dismiss_suggestion",
     ),
+    path(
+        "runs/<int:pk>/save/",
+        views.SaveSuggestionView.as_view(),
+        name="save_suggestion",
+    ),
+    path("saved/", views.SavedView.as_view(), name="saved"),
+    path(
+        "saved/<int:pk>/action/",
+        views.SavedActionView.as_view(),
+        name="saved_action",
+    ),
 ]

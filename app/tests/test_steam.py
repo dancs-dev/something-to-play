@@ -17,6 +17,7 @@ from app.models import (
     Preference,
 )
 from app.steam import (
+    STEAM_ART_BASE_URL,
     SteamError,
     catalogue_pages,
     header_image_url,
@@ -109,10 +110,7 @@ class SteamTests(TestCase):
         )
 
     def test_header_image_url_uses_current_store_asset_and_caches_it(self) -> None:
-        image = (
-            "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/"
-            "2483190/hash/header_alt_assets_4.jpg"
-        )
+        image = f"{STEAM_ART_BASE_URL}2483190/hash/header_alt_assets_4.jpg"
         requests = []
 
         def respond(request: httpx.Request) -> httpx.Response:

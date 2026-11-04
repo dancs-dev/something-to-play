@@ -21,6 +21,7 @@ from app.models import (
     Ownership,
     Preference,
     RecommendationRun,
+    SavedSuggestion,
 )
 from app.recommendations import (
     Owned,
@@ -32,6 +33,7 @@ from app.recommendations import (
     get_recent_recommendations,
     run_recommendation,
 )
+from app.steam import STEAM_ART_BASE_URL
 from app.tests import create_run
 from app.views import game_by_title
 
@@ -206,10 +208,7 @@ class AppTests(TestCase):
             results=GAMES + [GAMES[0] | {"title": "Unknown game"}],
         )
 
-        image = (
-            "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/"
-            "257510/header.jpg"
-        )
+        image = f"{STEAM_ART_BASE_URL}257510/header.jpg"
         response = self.client.get(reverse("run", args=[run.pk]))
 
         self.assertContains(
@@ -266,10 +265,7 @@ class AppTests(TestCase):
             provider="steam",
             external_id="2483190",
         )
-        image = (
-            "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/"
-            "2483190/hash/header_alt_assets_4.jpg"
-        )
+        image = f"{STEAM_ART_BASE_URL}2483190/hash/header_alt_assets_4.jpg"
         with patch("app.views.header_image_url", return_value=image) as lookup:
             response = self.client.get(reverse("steam_art", args=[2483190]))
         self.assertRedirects(response, image, fetch_redirect_response=False)
@@ -345,7 +341,7 @@ class AppTests(TestCase):
         )
         with CaptureQueriesContext(connection) as queries:
             appids = [result["steam_appid"] for result in run.illustrated_results]
-        self.assertEqual(len(queries), 2)
+        self.assertEqual(len(queries), 3)
         self.assertEqual(appids, ["632470", "1888930", "1593500", "", ""])
         with connection.cursor() as cursor:
             cursor.execute("EXPLAIN QUERY PLAN " + queries[0]["sql"])
@@ -745,6 +741,146 @@ class AppTests(TestCase):
         self.assertNotContains(
             self.client.get(reverse("run", args=[run.pk])), "Not interested."
         )
+
+    def test_save_suggestion_and_remove(self) -> None:
+        run = RecommendationRun.objects.create(
+            user=self.user,
+            inputs={},
+            results=[
+                GAMES[0] | {"category": "discover"},
+                GAMES[0] | {"title": "Portal 2", "category": "replay"},
+            ],
+        )
+        url = reverse("save_suggestion", args=[run.pk])
+        self.assertContains(
+            self.client.get(reverse("run", args=[run.pk])), "Save for later"
+        )
+        self.assertEqual(
+            self.client.post(
+                url, {"title": "Unknown game", "action": "save"}
+            ).status_code,
+            404,
+        )
+        self.assertRedirects(
+            self.client.post(url, {"title": "The Talos Principle", "action": "save"}),
+            reverse("run", args=[run.pk]),
+        )
+        saved = SavedSuggestion.objects.get(user=self.user)
+        self.assertEqual(saved.game.title, "The Talos Principle")
+        self.assertEqual(saved.category, "discover")
+        self.assertEqual(saved.rationale, GAMES[0]["rationale"])
+        self.assertEqual(saved.drawback, GAMES[0]["drawback"])
+        self.assertContains(
+            self.client.get(reverse("run", args=[run.pk])), "On your shelf."
+        )
+        page = self.client.get(reverse("saved"))
+        self.assertContains(page, "The Talos Principle")
+        self.assertContains(page, "Its puzzle solving fits your reasons")
+
+        # Saving again refreshes the snapshot instead of duplicating.
+        self.client.post(url, {"title": "The Talos Principle", "action": "save"})
+        self.assertEqual(SavedSuggestion.objects.filter(user=self.user).count(), 1)
+        # Another user's run and list stay untouched.
+        self.client.force_login(self.other)
+        self.assertEqual(
+            self.client.post(url, {"title": "Portal 2", "action": "save"}).status_code,
+            404,
+        )
+        self.assertFalse(SavedSuggestion.objects.filter(user=self.other).exists())
+        self.client.force_login(self.user)
+        self.client.post(url, {"title": "The Talos Principle", "action": "remove"})
+        self.assertFalse(SavedSuggestion.objects.filter(user=self.user).exists())
+        self.assertNotContains(
+            self.client.get(reverse("run", args=[run.pk])), "On your shelf."
+        )
+
+    def test_saving_a_hidden_discovery_unhides_it(self) -> None:
+        run = RecommendationRun.objects.create(
+            user=self.user,
+            inputs={},
+            results=[GAMES[0] | {"category": "discover"}],
+        )
+        self.client.post(
+            reverse("dismiss_suggestion", args=[run.pk]),
+            {"title": "The Talos Principle", "action": "dismiss"},
+        )
+        self.assertTrue(DismissedSuggestion.objects.filter(user=self.user).exists())
+        self.client.post(
+            reverse("save_suggestion", args=[run.pk]),
+            {"title": "The Talos Principle", "action": "save"},
+        )
+        self.assertTrue(SavedSuggestion.objects.filter(user=self.user).exists())
+        self.assertFalse(DismissedSuggestion.objects.filter(user=self.user).exists())
+
+    def test_played_pick_routes_to_rating_and_leaves_the_shelf(self) -> None:
+        saved = SavedSuggestion.objects.create(
+            user=self.user,
+            game=Game.objects.create(title="Outer Wilds"),
+            category="discover",
+            rationale="Something new to get lost in.",
+            drawback="Its difficulty may frustrate.",
+        )
+        other = SavedSuggestion.objects.create(
+            user=self.other,
+            game=Game.objects.create(title="A private save"),
+        )
+        page = self.client.get(reverse("saved"))
+        self.assertContains(page, "Outer Wilds")
+        self.assertContains(page, "Something new to get lost in.")
+        self.assertNotContains(page, "A private save")
+
+        self.assertEqual(
+            self.client.post(
+                reverse("saved_action", args=[other.pk]), {"action": "played"}
+            ).status_code,
+            404,
+        )
+        self.assertEqual(
+            self.client.post(
+                reverse("saved_action", args=[saved.pk]), {"action": "nope"}
+            ).status_code,
+            404,
+        )
+        response = self.client.post(
+            reverse("saved_action", args=[saved.pk]), {"action": "played"}
+        )
+        self.assertRedirects(
+            response,
+            f"{reverse('preference_new')}?game={saved.game_id}&next=saved",
+        )
+        self.assertFalse(SavedSuggestion.objects.filter(pk=saved.pk).exists())
+        # The rating form arrives knowing the game, and returns to the shelf.
+        form = self.client.get(
+            f"{reverse('preference_new')}?game={saved.game_id}&next=saved"
+        ).context["form"]
+        self.assertEqual(form.initial["game_id"], saved.game_id)
+        self.assertRedirects(
+            self.client.post(
+                f"{reverse('preference_new')}?game={saved.game_id}&next=saved",
+                {
+                    "subject": "Outer Wilds",
+                    "game_id": str(saved.game_id),
+                    "sentiment": "2",
+                    "reason": "It kept me up.",
+                },
+            ),
+            reverse("saved"),
+        )
+        self.assertTrue(
+            Preference.objects.filter(user=self.user, game_id=saved.game_id).exists()
+        )
+
+        # Removing drops the pick without the rating detour.
+        spare = SavedSuggestion.objects.create(
+            user=self.user, game=Game.objects.create(title="Balatro")
+        )
+        self.assertRedirects(
+            self.client.post(
+                reverse("saved_action", args=[spare.pk]), {"action": "remove"}
+            ),
+            reverse("saved"),
+        )
+        self.assertFalse(SavedSuggestion.objects.filter(pk=spare.pk).exists())
 
     def test_history_shows_model_and_thinking_level(self) -> None:
         RecommendationRun.objects.create(

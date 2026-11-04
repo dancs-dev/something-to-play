@@ -46,6 +46,16 @@
           <h3>{% if result.steam_appid %}<a href="https://store.steampowered.com/app/{{ result.steam_appid }}/" target="_blank" rel="noopener noreferrer">{{ result.title }}</a>{% else %}{{ result.title }}{% endif %}</h3>
           <p>{{ result.rationale }}</p>
           <p class="drawback"><strong>You might not enjoy:</strong> {{ result.drawback }}</p>
+          <form method="post" action="{% url 'save_suggestion' run.pk %}">
+            {% csrf_token %}
+            <input type="hidden" name="title" value="{{ result.title }}">
+            {% if result.saved %}
+              <span class="muted">On your shelf.</span>
+              <button class="quiet" name="action" value="remove">Remove</button>
+            {% else %}
+              <button class="quiet" name="action" value="save">Save for later</button>
+            {% endif %}
+          </form>
           {% if group.grouper != 'replay' %}
             <p class="muted">Played it? Add a rating:</p>
             <div class="actions">
